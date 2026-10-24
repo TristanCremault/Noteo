@@ -813,3 +813,4 @@ body::after {
 /* Rangée Favoris / Sélectionner / Version tel : une seule ligne */
 .pinned .pin { white-space: nowrap; flex: 1 1 0; min-width: 0; padding-left: 8px; padding-right: 8px; font-size: 15px; }
 #pin-select, #pin-phone { color: var(--fg); }
+#pin-phone { flex: 1.8 1 0; font-size: 14px; padding-left: 4px; padding-right: 4px; }

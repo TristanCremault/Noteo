@@ -24,6 +24,10 @@
   function getNotes() {
     try { return JSON.parse(read('noteo-notes') || '[]'); } catch (e) { return []; }
   }
+  // Espaces : chaque note appartient à l'espace 'phone' (ce téléphone) ou 'pc' (Noteo sur ordinateur).
+  // Les deux sont reliés par le compte en ligne, mais chacun n'affiche que ses notes. Les anciennes notes sans espace restent visibles partout.
+  var MY_SPACE = 'phone';
+  function spaceNotes() { return getNotes().filter(function (n) { return !n.space || n.space === MY_SPACE; }); }
   function saveNotes(list) { write('noteo-notes', JSON.stringify(list)); if (typeof onDataChanged === 'function') onDataChanged(); }
 
   function getFolders() {
@@ -172,7 +176,7 @@
 
     var all = getFolders();
     var lockedView = isLocked(state.folder, all) && lockedOpen();
-    var notes = getNotes().filter(function (n) { return lockedView || !isLocked(n.folder, all); });
+    var notes = spaceNotes().filter(function (n) { return lockedView || !isLocked(n.folder, all); });
     if (state.folder === FAVORITES) notes = notes.filter(function (n) { return n.favorite; });
     else if (state.folder !== ALL) notes = notes.filter(function (n) { return n.folder === state.folder; });
 
@@ -217,7 +221,7 @@
       addSub.addEventListener('click', function () { newFolderSheet(state.folder); });
       crumbActions.appendChild(addSub);
       if (!q) {
-        var allNotes = getNotes();
+        var allNotes = spaceNotes();
         kidsRows = visible.filter(function (f) { return f.parent === state.folder; }).map(function (f) { return folderRow(f, visible, allNotes, 0, false); });
       }
     }
@@ -245,7 +249,7 @@
       box.appendChild(p);
       return box;
     }
-    var noNotesAtAll = getNotes().length === 0;
+    var noNotesAtAll = spaceNotes().length === 0;
     p.textContent = noNotesAtAll
       ? 'Aucune note pour le moment. Appuie sur + pour écrire la première.'
       : 'Ce dossier est vide. Appuie sur + pour y écrire une note.';
@@ -392,7 +396,7 @@
 
     var folders = visibleFolders();
     var q = state.query.trim().toLowerCase();
-    var notes = getNotes();
+    var notes = spaceNotes();
 
     var items = [];
     if (q) {
@@ -542,6 +546,7 @@
         render();
       });
       opt(sheet, 'Déplacer vers…', '', function () { moveSheet(id); });
+      opt(sheet, '🖥️ Déplacer vers la version ordinateur', '', function () { moveToPcSheet(id); });
       if (!isLocked(note.folder, getFolders())) opt(sheet, '🔒 Déplacer vers le dossier verrouillé', '', function () { lockIntoLockedFolder(id); });
       opt(sheet, 'Supprimer', 'danger', function () { confirmDelete(id); });
     });
@@ -1015,7 +1020,8 @@
     var i = list.findIndex(function (n) { return n.id === s.id; });
     var rec = {
       id: s.id, title: s.title || 'Sans titre', content: content, folder: s.folder, favorite: s.favorite, hidden: s.hidden,
-      background: s.background, lock: lock, createdAt: (i >= 0 ? list[i].createdAt : null) || s.createdAt || now, updatedAt: now
+      background: s.background, lock: lock, createdAt: (i >= 0 ? list[i].createdAt : null) || s.createdAt || now, updatedAt: now,
+      space: i >= 0 ? list[i].space : MY_SPACE
     };
     if (i >= 0) list[i] = Object.assign({}, list[i], rec); else list.push(rec);
     saveNotes(list);
@@ -1563,6 +1569,7 @@
         markDirty();
       });
       opt(sheet, 'Fond de la note', '', noteBackgroundSheet);
+      opt(sheet, '🖥️ Déplacer vers la version ordinateur', '', function () { closeSheet(); moveToPcSheet(ed && ed.id); });
       if (!isLocked(ed.folder, getFolders())) opt(sheet, '🔒 Déplacer vers le dossier verrouillé', '', function () { closeSheet(); lockCurrentIntoLockedFolder(); });
       opt(sheet, 'Partager la note', '', shareSheet);
       opt(sheet, ed.lock ? '🔒 Verrouillée : gérer le verrou' : '🔒 Verrouiller', '', lockEntry);
@@ -3370,30 +3377,75 @@
   }
   tabAll.addEventListener('click', function () { goNotes(ALL); });
   pinFav.addEventListener('click', function () { goNotes(FAVORITES); });
-  // Version téléphone : adresse de l'appli à partager (installer sur un autre téléphone, ou l'envoyer à soi-même)
-  var PHONE_URL = 'https://tristancremault.github.io/Noteo-Version-Mobile/';
-  $('pin-phone').addEventListener('click', function () {
-    var url = /^https:/.test(location.protocol) ? location.origin + location.pathname.replace(/[^/]*$/, '') : PHONE_URL;
+  // ----- Deux espaces : téléphone / ordinateur (reliés par le compte en ligne) -----
+  function needOnlineSheet(what) {
+    confirmSheet('Compte en ligne requis', 'Pour ' + what + ', connecte-toi à un compte en ligne (le même que sur l’ordinateur) : c’est lui qui relie les deux espaces.', 'Compte en ligne', function () { openAccount(); onlineChoiceSheet(); }, false);
+  }
+  function moveToPcSheet(id) {
+    if (!id) return;
+    if (accountType() !== 'online') { needOnlineSheet('envoyer une note vers l’ordinateur'); return; }
+    confirmSheet('Déplacer vers la version ordinateur ?', 'La note disparaîtra du téléphone et apparaîtra dans Noteo sur ordinateur (même compte en ligne). Tu pourras la récupérer depuis « Version ordinateur ».', 'Déplacer', async function () {
+      if (ed && ed.id === id) await persistCurrent();
+      updateNote(id, { space: 'pc' });
+      if (currentId === id && ed) closeEditor(true);
+      render();
+      toast('Note envoyée vers l’ordinateur');
+    }, false);
+  }
+  function pcSpaceSheet() {
     openSheet(function (sheet) {
       sheet.setAttribute('data-nofocus', '1');
-      heading(sheet, 'Version téléphone');
-      var p = document.createElement('p');
-      p.textContent = 'Voici l’adresse de Noteo pour téléphone. Ouvre-la dans Chrome sur un autre Android, puis « Installer l’application », et connecte-toi avec ton compte en ligne pour retrouver tes notes.';
-      sheet.appendChild(p);
-      var a = document.createElement('p');
-      a.className = 'hint';
-      a.style.wordBreak = 'break-all';
-      a.textContent = url;
-      sheet.appendChild(a);
-      opt(sheet, 'Copier l’adresse', '', function () {
-        closeSheet();
-        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { toast('Adresse copiée'); }, function () { toast('Copie refusée.'); });
-        else toast('Copie impossible ici.');
-      });
-      if (navigator.share) opt(sheet, 'Partager l’adresse…', '', function () { closeSheet(); navigator.share({ title: 'Noteo', url: url }).catch(function () { /* annulé */ }); });
-      opt(sheet, 'Fermer', '', closeSheet);
+      function draw() {
+        sheet.innerHTML = '';
+        heading(sheet, 'Version ordinateur');
+        if (accountType() !== 'online') {
+          var p0 = document.createElement('p');
+          p0.textContent = 'L’espace ordinateur contient les notes de Noteo sur PC. Connecte-toi à un compte en ligne (le même que sur le PC) pour relier les deux espaces.';
+          sheet.appendChild(p0);
+          opt(sheet, 'Compte en ligne', '', function () { closeSheet(); openAccount(); onlineChoiceSheet(); });
+          opt(sheet, 'Fermer', '', closeSheet);
+          return;
+        }
+        var list = getNotes().filter(function (n) { return n.space === 'pc'; });
+        var p = document.createElement('p');
+        p.textContent = list.length
+          ? plural(list.length, 'note', 'notes') + ' dans l’espace ordinateur (non affichées sur le téléphone). Récupère celles que tu veux.'
+          : 'Aucune note dans l’espace ordinateur pour le moment. Sur le PC, utilise « Déplacer vers la version téléphone » pour en envoyer ici, ou l’inverse depuis ce téléphone.';
+        sheet.appendChild(p);
+        if (list.length) {
+          var box = document.createElement('div');
+          box.style.cssText = 'max-height:38vh;overflow-y:auto;margin:6px 0 10px;display:flex;flex-direction:column;gap:8px';
+          list.forEach(function (n) {
+            var row = document.createElement('div');
+            row.className = 'row';
+            row.style.alignItems = 'center';
+            var t = document.createElement('span');
+            t.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+            t.textContent = (n.lock && n.lock.requireOpen ? '🔒 ' : '') + (n.title || 'Sans titre');
+            var b = document.createElement('button');
+            b.className = 'chip';
+            b.textContent = 'Récupérer';
+            b.addEventListener('click', function () { updateNote(n.id, { space: 'phone' }); render(); draw(); toast('Note récupérée sur le téléphone'); });
+            row.appendChild(t);
+            row.appendChild(b);
+            box.appendChild(row);
+          });
+          sheet.appendChild(box);
+          opt(sheet, 'Tout récupérer', '', function () {
+            list.forEach(function (n) { updateNote(n.id, { space: 'phone' }); });
+            closeSheet(); render(); toast(plural(list.length, 'note récupérée', 'notes récupérées'));
+          });
+        }
+        opt(sheet, 'Actualiser', '', function () {
+          toast('Synchronisation…');
+          syncOnlineNow(true).then(function () { if (scrim) draw(); }, function () { toast('Synchronisation impossible.'); });
+        });
+        opt(sheet, 'Fermer', '', closeSheet);
+      }
+      draw();
     });
-  });
+  }
+  $('pin-phone').addEventListener('click', pcSpaceSheet);
   tabFolders.addEventListener('click', function () {
     if (state.view === 'folders') { state.view = 'notes'; if (state.folder === FAVORITES || state.folder === ALL) state.folder = DEFAULT_FOLDER; }
     else { state.view = 'folders'; state.browse = null; }
