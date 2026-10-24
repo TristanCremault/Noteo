@@ -26,8 +26,10 @@
   }
   // Espaces : chaque note appartient à l'espace 'phone' (ce téléphone) ou 'pc' (Noteo sur ordinateur).
   // Les deux sont reliés par le compte en ligne, mais chacun n'affiche que ses notes. Les anciennes notes sans espace restent visibles partout.
-  var MY_SPACE = 'phone';
-  function spaceNotes() { return getNotes().filter(function (n) { return !n.space || n.space === MY_SPACE; }); }
+  function curSpace() { try { return sessionStorage.getItem('noteo-space') === 'pc' ? 'pc' : 'phone'; } catch (e) { return 'phone'; } }
+  function otherSpace() { return curSpace() === 'pc' ? 'phone' : 'pc'; }
+  function spaceNotes() { var sp = curSpace(); return getNotes().filter(function (n) { return !n.space || n.space === sp; }); }
+  function moveLabel() { return curSpace() === 'phone' ? '🖥️ Déplacer vers la version ordinateur' : '📱 Déplacer vers la version téléphone'; }
   function saveNotes(list) { write('noteo-notes', JSON.stringify(list)); if (typeof onDataChanged === 'function') onDataChanged(); }
 
   function getFolders() {
@@ -156,6 +158,13 @@
     pinFav.setAttribute('aria-current', String(state.view === 'notes' && state.folder === FAVORITES));
     tabFolders.setAttribute('aria-current', String(state.view === 'folders'));
 
+    if (curSpace() === 'pc' && accountType() !== 'online') { try { sessionStorage.removeItem('noteo-space'); } catch (e) { /* ignoré */ } }
+    var inPc = curSpace() === 'pc';
+    appEl.classList.toggle('space-pc', inPc);
+    $('space-banner').hidden = !inPc;
+    $('space-banner').textContent = '🖥️ Espace ordinateur : les notes de Noteo sur PC';
+    $('pin-phone').textContent = inPc ? '📱 Version téléphone' : 'Version ordinateur';
+    $('sel-space').textContent = inPc ? 'Vers tel' : 'Vers PC';
     if (state.view === 'folders' && sel.on) { sel.on = false; sel.ids = {}; }
     appEl.classList.toggle('selecting', sel.on);
     $('selbar').hidden = !sel.on;
@@ -201,6 +210,13 @@
     // Sous-dossiers du dossier ouvert (en tête de liste) + boutons « Parent » et « + Sous-dossier »
     var kidsRows = [];
     var isRealFolder = state.folder !== FAVORITES && state.folder !== ALL;
+    if (curSpace() === 'pc') {
+      var rf = document.createElement('button');
+      rf.className = 'chip';
+      rf.textContent = '↻ Actualiser';
+      rf.addEventListener('click', function () { toast('Synchronisation…'); syncOnlineNow(true).then(function () { render(); }, function () { toast('Synchronisation impossible.'); }); });
+      crumbActions.appendChild(rf);
+    }
     if (lockedView) crumbActions.appendChild(lockedExitChip());
     if (isRealFolder) {
       var visible = visibleFolders();
@@ -546,7 +562,7 @@
         render();
       });
       opt(sheet, 'Déplacer vers…', '', function () { moveSheet(id); });
-      opt(sheet, '🖥️ Déplacer vers la version ordinateur', '', function () { moveToPcSheet(id); });
+      opt(sheet, moveLabel(), '', function () { moveToOtherSpace(id); });
       if (!isLocked(note.folder, getFolders())) opt(sheet, '🔒 Déplacer vers le dossier verrouillé', '', function () { lockIntoLockedFolder(id); });
       opt(sheet, 'Supprimer', 'danger', function () { confirmDelete(id); });
     });
@@ -1021,7 +1037,7 @@
     var rec = {
       id: s.id, title: s.title || 'Sans titre', content: content, folder: s.folder, favorite: s.favorite, hidden: s.hidden,
       background: s.background, lock: lock, createdAt: (i >= 0 ? list[i].createdAt : null) || s.createdAt || now, updatedAt: now,
-      space: i >= 0 ? list[i].space : MY_SPACE
+      space: i >= 0 ? list[i].space : curSpace()
     };
     if (i >= 0) list[i] = Object.assign({}, list[i], rec); else list.push(rec);
     saveNotes(list);
@@ -1569,7 +1585,7 @@
         markDirty();
       });
       opt(sheet, 'Fond de la note', '', noteBackgroundSheet);
-      opt(sheet, '🖥️ Déplacer vers la version ordinateur', '', function () { closeSheet(); moveToPcSheet(ed && ed.id); });
+      opt(sheet, moveLabel(), '', function () { closeSheet(); moveToOtherSpace(ed && ed.id); });
       if (!isLocked(ed.folder, getFolders())) opt(sheet, '🔒 Déplacer vers le dossier verrouillé', '', function () { closeSheet(); lockCurrentIntoLockedFolder(); });
       opt(sheet, 'Partager la note', '', shareSheet);
       opt(sheet, ed.lock ? '🔒 Verrouillée : gérer le verrou' : '🔒 Verrouiller', '', lockEntry);
@@ -2621,7 +2637,7 @@
       updateSelUI();
     });
     crumbActions.appendChild(all);
-    ['sel-dup', 'sel-move', 'sel-del'].forEach(function (id) { $(id).disabled = !n; });
+    ['sel-dup', 'sel-move', 'sel-space', 'sel-del'].forEach(function (id) { $(id).disabled = !n; });
   }
   $('pin-select').addEventListener('click', function () {
     if (sel.on) { exitSelect(); return; }
@@ -2630,6 +2646,7 @@
     render();
   });
   $('sel-cancel').addEventListener('click', exitSelect);
+  $('sel-space').addEventListener('click', function () { moveToOtherSpace(selIds(), function () { sel.on = false; sel.ids = {}; }); });
   $('sel-dup').addEventListener('click', function () {
     var ids = selIds();
     if (!ids.length) return;
@@ -2684,6 +2701,7 @@
     sdel('noteo-login-unlocked');
     sdel('noteo-pin-unlocked');
     sdel('noteo-locked-open');
+    sdel('noteo-space');
     sel.on = false; sel.ids = {};
     closeSheet();
     editorEl.hidden = true;
@@ -3381,71 +3399,36 @@
   function needOnlineSheet(what) {
     confirmSheet('Compte en ligne requis', 'Pour ' + what + ', connecte-toi à un compte en ligne (le même que sur l’ordinateur) : c’est lui qui relie les deux espaces.', 'Compte en ligne', function () { openAccount(); onlineChoiceSheet(); }, false);
   }
-  function moveToPcSheet(id) {
-    if (!id) return;
-    if (accountType() !== 'online') { needOnlineSheet('envoyer une note vers l’ordinateur'); return; }
-    confirmSheet('Déplacer vers la version ordinateur ?', 'La note disparaîtra du téléphone et apparaîtra dans Noteo sur ordinateur (même compte en ligne). Tu pourras la récupérer depuis « Version ordinateur ».', 'Déplacer', async function () {
-      if (ed && ed.id === id) await persistCurrent();
-      updateNote(id, { space: 'pc' });
-      if (currentId === id && ed) closeEditor(true);
-      render();
-      toast('Note envoyée vers l’ordinateur');
-    }, false);
+  var SPACE_NAME = { pc: 'ordinateur', phone: 'téléphone' };
+  // Déplace une ou plusieurs notes vers l'autre espace (ordinateur <-> téléphone)
+  function moveToOtherSpace(idOrIds, after) {
+    var ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
+    ids = ids.filter(Boolean);
+    if (!ids.length) return;
+    var target = otherSpace();
+    var many = ids.length > 1;
+    if (accountType() !== 'online') { needOnlineSheet('envoyer ' + (many ? 'des notes' : 'une note') + ' vers ' + (target === 'pc' ? 'l’ordinateur' : 'le téléphone')); return; }
+    confirmSheet('Déplacer vers la version ' + SPACE_NAME[target] + ' ?',
+      (many ? 'Les notes disparaîtront' : 'La note disparaîtra') + ' de cet espace et ' + (many ? 'apparaîtront' : 'apparaîtra') + ' dans Noteo sur ' + (target === 'pc' ? 'ordinateur' : 'téléphone') + ' (même compte en ligne). Tu pourras ' + (many ? 'les' : 'la') + ' ramener depuis l’autre espace.',
+      'Déplacer', async function () {
+        if (ed && ids.indexOf(ed.id) >= 0) await persistCurrent();
+        ids.forEach(function (id) { updateNote(id, { space: target }); });
+        if (currentId && ids.indexOf(currentId) >= 0 && ed) closeEditor(true);
+        if (after) after();
+        render();
+        toast(many ? ids.length + ' notes envoyées vers ' + (target === 'pc' ? 'l’ordinateur' : 'le téléphone') : 'Note envoyée vers ' + (target === 'pc' ? 'l’ordinateur' : 'le téléphone'));
+      }, false);
   }
-  function pcSpaceSheet() {
-    openSheet(function (sheet) {
-      sheet.setAttribute('data-nofocus', '1');
-      function draw() {
-        sheet.innerHTML = '';
-        heading(sheet, 'Version ordinateur');
-        if (accountType() !== 'online') {
-          var p0 = document.createElement('p');
-          p0.textContent = 'L’espace ordinateur contient les notes de Noteo sur PC. Connecte-toi à un compte en ligne (le même que sur le PC) pour relier les deux espaces.';
-          sheet.appendChild(p0);
-          opt(sheet, 'Compte en ligne', '', function () { closeSheet(); openAccount(); onlineChoiceSheet(); });
-          opt(sheet, 'Fermer', '', closeSheet);
-          return;
-        }
-        var list = getNotes().filter(function (n) { return n.space === 'pc'; });
-        var p = document.createElement('p');
-        p.textContent = list.length
-          ? plural(list.length, 'note', 'notes') + ' dans l’espace ordinateur (non affichées sur le téléphone). Récupère celles que tu veux.'
-          : 'Aucune note dans l’espace ordinateur pour le moment. Sur le PC, utilise « Déplacer vers la version téléphone » pour en envoyer ici, ou l’inverse depuis ce téléphone.';
-        sheet.appendChild(p);
-        if (list.length) {
-          var box = document.createElement('div');
-          box.style.cssText = 'max-height:38vh;overflow-y:auto;margin:6px 0 10px;display:flex;flex-direction:column;gap:8px';
-          list.forEach(function (n) {
-            var row = document.createElement('div');
-            row.className = 'row';
-            row.style.alignItems = 'center';
-            var t = document.createElement('span');
-            t.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-            t.textContent = (n.lock && n.lock.requireOpen ? '🔒 ' : '') + (n.title || 'Sans titre');
-            var b = document.createElement('button');
-            b.className = 'chip';
-            b.textContent = 'Récupérer';
-            b.addEventListener('click', function () { updateNote(n.id, { space: 'phone' }); render(); draw(); toast('Note récupérée sur le téléphone'); });
-            row.appendChild(t);
-            row.appendChild(b);
-            box.appendChild(row);
-          });
-          sheet.appendChild(box);
-          opt(sheet, 'Tout récupérer', '', function () {
-            list.forEach(function (n) { updateNote(n.id, { space: 'phone' }); });
-            closeSheet(); render(); toast(plural(list.length, 'note récupérée', 'notes récupérées'));
-          });
-        }
-        opt(sheet, 'Actualiser', '', function () {
-          toast('Synchronisation…');
-          syncOnlineNow(true).then(function () { if (scrim) draw(); }, function () { toast('Synchronisation impossible.'); });
-        });
-        opt(sheet, 'Fermer', '', closeSheet);
-      }
-      draw();
-    });
+  // Bascule entre l'espace téléphone et l'espace ordinateur (Noteo sur PC)
+  function setSpace(sp) {
+    if (sp === 'pc' && accountType() !== 'online') { needOnlineSheet('voir l’espace ordinateur'); return; }
+    try { sessionStorage.setItem('noteo-space', sp); } catch (e) { /* ignoré */ }
+    sel.on = false; sel.ids = {};
+    state.view = 'notes'; state.folder = DEFAULT_FOLDER; state.browse = null; state.query = ''; searchEl.value = '';
+    render();
+    if (sp === 'pc') syncOnlineNow(true).catch(function () {});
   }
-  $('pin-phone').addEventListener('click', pcSpaceSheet);
+  $('pin-phone').addEventListener('click', function () { setSpace(otherSpace()); });
   tabFolders.addEventListener('click', function () {
     if (state.view === 'folders') { state.view = 'notes'; if (state.folder === FAVORITES || state.folder === ALL) state.folder = DEFAULT_FOLDER; }
     else { state.view = 'folders'; state.browse = null; }
