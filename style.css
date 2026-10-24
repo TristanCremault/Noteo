@@ -788,3 +788,28 @@ body::after {
 .crop-h-ne { right: -15px; top: -15px; } .crop-h-ne::after { right: 8px; top: 8px; }
 .crop-h-sw { left: -15px; bottom: -15px; } .crop-h-sw::after { left: 8px; bottom: 8px; }
 .crop-h-se { right: -15px; bottom: -15px; } .crop-h-se::after { right: 8px; bottom: 8px; }
+
+/* Logo en fond des écrans de connexion (comme sur PC) */
+.gate-wm { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(170vw, 120vh); max-width: none; height: auto; opacity: 0.4; pointer-events: none; z-index: 0; }
+:root[data-theme="light"] .gate-wm { opacity: 0.28; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .gate-wm { opacity: 0.28; } }
+.gate .gate-card { position: relative; z-index: 1; }
+
+/* Mode Sélectionner */
+.bottom[hidden] { display: none; }
+.app.selecting .bottom:not(.selbar) { display: none; }
+.selbar { grid-template-columns: repeat(4, 1fr); }
+.selbar .tab { height: 52px; font-size: 15px; font-weight: 600; color: var(--fg); }
+.selbar .tab.danger { color: var(--danger); }
+.selbar .tab:disabled { opacity: 0.4; }
+.app.selecting .more { display: none; }
+.pin[aria-pressed="true"] { border-color: var(--accent); background: var(--panel-alt); color: var(--fg); }
+.card.selectable { position: relative; padding-left: 52px; }
+.selmark { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line-strong); background: transparent; }
+.card.selected { border-color: var(--accent); background: var(--panel-alt); }
+.card.selected .selmark { background: var(--accent); border-color: var(--accent); }
+.card.selected .selmark::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 14px; line-height: 1; }
+
+/* Rangée Favoris / Sélectionner / Version tel : une seule ligne */
+.pinned .pin { white-space: nowrap; flex: 1 1 0; min-width: 0; padding-left: 8px; padding-right: 8px; font-size: 15px; }
+#pin-select, #pin-phone { color: var(--fg); }

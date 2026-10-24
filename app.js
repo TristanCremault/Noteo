@@ -111,6 +111,8 @@
     browse: null,             // dossier parent affiché dans la vue "Dossier" (null = racine)
     query: ''
   };
+  var sel = { on: false, ids: {} };   // mode « Sélectionner »
+  function selIds() { return Object.keys(sel.ids).filter(function (k) { return sel.ids[k]; }); }
   try {
     var savedFolder = sessionStorage.getItem('noteo-active-folder');
     if (savedFolder) state.folder = savedFolder;
@@ -150,6 +152,11 @@
     pinFav.setAttribute('aria-current', String(state.view === 'notes' && state.folder === FAVORITES));
     tabFolders.setAttribute('aria-current', String(state.view === 'folders'));
 
+    if (state.view === 'folders' && sel.on) { sel.on = false; sel.ids = {}; }
+    appEl.classList.toggle('selecting', sel.on);
+    $('selbar').hidden = !sel.on;
+    $('pin-select').setAttribute('aria-pressed', String(sel.on));
+    $('pin-select').textContent = sel.on ? 'Terminer' : 'Sélectionner';
     if (state.view === 'folders') renderFolders(); else renderNotes();
     applyHomeBg();
   }
@@ -177,6 +184,15 @@
       });
     }
     notes.sort(function (a, b) { return new Date(b.updatedAt) - new Date(a.updatedAt); });
+
+    if (sel.on) {
+      listEl.innerHTML = '';
+      selNotes = notes;
+      notes.forEach(function (n) { listEl.appendChild(noteCard(n)); });
+      if (!notes.length) listEl.appendChild(emptyState(q));
+      updateSelUI();
+      return;
+    }
 
     // Sous-dossiers du dossier ouvert (en tête de liste) + boutons « Parent » et « + Sous-dossier »
     var kidsRows = [];
@@ -281,8 +297,23 @@
     if (prev.textContent) card.appendChild(prev);
     card.appendChild(meta);
 
-    card.addEventListener('click', function () { openEditor(note.id); });
-    card.addEventListener('keydown', function (e) { if (e.key === 'Enter') openEditor(note.id); });
+    if (sel.on) {
+      card.classList.add('selectable');
+      card.classList.toggle('selected', !!sel.ids[note.id]);
+      var mark = document.createElement('span');
+      mark.className = 'selmark';
+      mark.setAttribute('aria-hidden', 'true');
+      card.insertBefore(mark, card.firstChild);
+    }
+    function activate() {
+      if (sel.on) {
+        sel.ids[note.id] = !sel.ids[note.id];
+        card.classList.toggle('selected', !!sel.ids[note.id]);
+        updateSelUI();
+      } else openEditor(note.id);
+    }
+    card.addEventListener('click', activate);
+    card.addEventListener('keydown', function (e) { if (e.key === 'Enter') activate(); });
     more.addEventListener('click', function (e) { e.stopPropagation(); noteMenu(note.id); });
     return card;
   }
@@ -2469,24 +2500,29 @@
   }
 
   // Range une note dans le dossier verrouillé : son contenu est chiffré avec le code
-  function lockIntoLockedFolder(id, target) {
-    var note = getNotes().find(function (n) { return n.id === id; });
-    if (!note) return;
-    confirmSheet('Déplacer vers le dossier verrouillé ?', 'Le contenu de la note sera chiffré avec le code du dossier verrouillé : il faudra ce code pour la rouvrir.', 'Continuer', async function () {
+  function lockIntoLockedFolder(idOrIds, target, after) {
+    var ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
+    var many = ids.length > 1;
+    confirmSheet('Déplacer vers le dossier verrouillé ?', (many ? 'Le contenu des notes sera chiffré' : 'Le contenu de la note sera chiffré') + ' avec le code du dossier verrouillé : il faudra ce code pour ' + (many ? 'les rouvrir.' : 'la rouvrir.'), 'Continuer', async function () {
       var expected = await lockedExpected();
       authSheet(expected, 'Entre le code du dossier verrouillé', async function (code) {
-        var fresh = getNotes().find(function (n) { return n.id === id; });
-        if (!fresh) return true;
         ensureLockedRoot();
-        var patch = { folder: target || LOCKED_FOLDER };
-        if (!fresh.lock) {
-          patch.lock = { hash: expected, requireOpen: true, requireEdit: false, encrypted: await encryptText(code, fresh.content || '') };
-          patch.content = '';
+        var moved = 0;
+        for (var i = 0; i < ids.length; i++) {
+          var fresh = getNotes().find(function (n) { return n.id === ids[i]; });
+          if (!fresh) continue;
+          var patch = { folder: target || LOCKED_FOLDER };
+          if (!fresh.lock) {
+            patch.lock = { hash: expected, requireOpen: true, requireEdit: false, encrypted: await encryptText(code, fresh.content || '') };
+            patch.content = '';
+          }
+          updateNote(ids[i], patch);
+          moved++;
+          if (currentId === ids[i] && ed) closeEditor(true);
         }
-        updateNote(id, patch);
-        if (currentId === id && ed) closeEditor(true);
+        if (after) after();
         render();
-        toast('Note placée dans le dossier verrouillé');
+        toast(moved > 1 ? moved + ' notes placées dans le dossier verrouillé' : 'Note placée dans le dossier verrouillé');
         defaultCodeWarning();
         return true;
       }, 'locked-folder', { placeholder: 'Code du dossier verrouillé', button: 'Valider' });
@@ -2558,6 +2594,100 @@
       });
     });
   });
+
+  // ----- Mode « Sélectionner » : dupliquer, déplacer, supprimer plusieurs notes -----
+  var selNotes = [];
+  function exitSelect() { sel.on = false; sel.ids = {}; render(); }
+  function updateSelUI() {
+    var n = selIds().length;
+    if (!sel.on) return;
+    crumbEl.textContent = n ? plural(n, 'note sélectionnée', 'notes sélectionnées') : 'Touche des notes pour les choisir';
+    crumbActions.innerHTML = '';
+    var all = document.createElement('button');
+    all.className = 'chip';
+    var everything = selNotes.length > 0 && n === selNotes.length;
+    all.textContent = everything ? 'Tout désélectionner' : 'Tout sélectionner';
+    all.addEventListener('click', function () {
+      sel.ids = {};
+      if (!everything) selNotes.forEach(function (x) { sel.ids[x.id] = true; });
+      listEl.querySelectorAll('.card.selectable').forEach(function (c, i) { c.classList.toggle('selected', !everything); });
+      updateSelUI();
+    });
+    crumbActions.appendChild(all);
+    ['sel-dup', 'sel-move', 'sel-del'].forEach(function (id) { $(id).disabled = !n; });
+  }
+  $('pin-select').addEventListener('click', function () {
+    if (sel.on) { exitSelect(); return; }
+    if (state.view === 'folders') state.view = 'notes';
+    sel.on = true; sel.ids = {};
+    render();
+  });
+  $('sel-cancel').addEventListener('click', exitSelect);
+  $('sel-dup').addEventListener('click', function () {
+    var ids = selIds();
+    if (!ids.length) return;
+    var list = getNotes(), now = new Date().toISOString(), base = Date.now(), k = 0;
+    ids.forEach(function (id) {
+      var n = list.find(function (x) { return x.id === id; });
+      if (!n) return;
+      list.push(Object.assign({}, n, { id: String(base + (k++)), title: (n.title || 'Sans titre') + ' (copie)', createdAt: now, updatedAt: now }));
+    });
+    saveNotes(list);
+    exitSelect();
+    toast(plural(k, 'note dupliquée', 'notes dupliquées'));
+  });
+  $('sel-del').addEventListener('click', function () {
+    var ids = selIds();
+    if (!ids.length) return;
+    confirmSheet('Supprimer ' + plural(ids.length, 'note', 'notes') + ' ?', ids.length > 1 ? 'Ces notes seront supprimées définitivement.' : 'Cette note sera supprimée définitivement.', 'Supprimer', function () {
+      ids.forEach(recordNoteDeletion);
+      saveNotes(getNotes().filter(function (n) { return ids.indexOf(n.id) < 0; }));
+      exitSelect();
+      toast(plural(ids.length, 'note supprimée', 'notes supprimées'));
+    });
+  });
+  $('sel-move').addEventListener('click', function () {
+    var ids = selIds();
+    if (!ids.length) return;
+    folderPicker('Déplacer ' + plural(ids.length, 'note', 'notes') + ' vers', null, function (name) {
+      var fl = getFolders();
+      var notes = getNotes().filter(function (n) { return ids.indexOf(n.id) >= 0; });
+      if (isLocked(name, fl)) {
+        var toLock = notes.filter(function (n) { return !isLocked(n.folder, fl); }).map(function (n) { return n.id; });
+        if (toLock.length) {
+          var rest = ids.filter(function (id) { return toLock.indexOf(id) < 0; });
+          rest.forEach(function (id) { updateNote(id, { folder: name }); });
+          lockIntoLockedFolder(toLock, name, function () { sel.on = false; sel.ids = {}; });
+          return;
+        }
+      }
+      ids.forEach(function (id) { updateNote(id, { folder: name }); });
+      exitSelect();
+      toast(plural(ids.length, 'note déplacée', 'notes déplacées') + ' dans « ' + name + ' »');
+    });
+  });
+
+  // ----- Déconnexion : retour à l'écran de connexion -----
+  async function logout(forgetEmail) {
+    if (accountType() === 'online') {
+      try { await onlineSignOut(); } catch (e) { /* ignoré */ }
+      rdel('noteo-online-pin-vault');
+      if (forgetEmail) rdel('noteo-remembered-email');
+    }
+    sdel('noteo-login-unlocked');
+    sdel('noteo-pin-unlocked');
+    sdel('noteo-locked-open');
+    sel.on = false; sel.ids = {};
+    closeSheet();
+    editorEl.hidden = true;
+    accountEl.hidden = true;
+    state.view = 'notes'; state.folder = DEFAULT_FOLDER; state.query = ''; searchEl.value = '';
+    $('login-pass').value = '';
+    $('login-err').textContent = '';
+    startGates();
+  }
+  $('acc-logout').addEventListener('click', function () { logout(false); });
+  $('pin-logout').addEventListener('click', function () { logout(true); });
 
   // ----- Export : PDF (impression) et ODT -----
   function printNote() {
@@ -2712,6 +2842,7 @@
     $('acc-current').textContent = 'Système actuel : ' + TYPE_LABELS[type] + (type === 'local' && acc ? ' (' + acc.username + ')' : '') + (type === 'online' && onlineAccount() ? ' (' + onlineAccount().email + ')' : '');
     accountEl.querySelectorAll('.acc-type').forEach(function (b) { b.classList.toggle('selected', b.getAttribute('data-type') === type); });
     $('acc-btn-pass').hidden = type !== 'local';
+    $('acc-logout').hidden = !(type === 'local' || type === 'online');
     $('acc-pin-on').checked = pinEnabled() && !!read('noteo-app-pin-hash');
     $('acc-pin-label').textContent = read('noteo-app-pin-hash') ? 'Modifier le code PIN' : 'Définir le code PIN';
   }
@@ -3102,6 +3233,7 @@
       pinGate.hidden = false;
       $('pin-input').value = '';
       $('pin-err').textContent = '';
+      $('pin-logout').hidden = !(accountType() === 'local' || accountType() === 'online');
       $('pin-input').focus();
     } else {
       showApp();
@@ -3238,7 +3370,30 @@
   }
   tabAll.addEventListener('click', function () { goNotes(ALL); });
   pinFav.addEventListener('click', function () { goNotes(FAVORITES); });
-  $('pin-soon').addEventListener('click', function () { toast('Ce bouton arrive bientôt.'); });
+  // Version téléphone : adresse de l'appli à partager (installer sur un autre téléphone, ou l'envoyer à soi-même)
+  var PHONE_URL = 'https://tristancremault.github.io/Noteo-Version-Mobile/';
+  $('pin-phone').addEventListener('click', function () {
+    var url = /^https:/.test(location.protocol) ? location.origin + location.pathname.replace(/[^/]*$/, '') : PHONE_URL;
+    openSheet(function (sheet) {
+      sheet.setAttribute('data-nofocus', '1');
+      heading(sheet, 'Version téléphone');
+      var p = document.createElement('p');
+      p.textContent = 'Voici l’adresse de Noteo pour téléphone. Ouvre-la dans Chrome sur un autre Android, puis « Installer l’application », et connecte-toi avec ton compte en ligne pour retrouver tes notes.';
+      sheet.appendChild(p);
+      var a = document.createElement('p');
+      a.className = 'hint';
+      a.style.wordBreak = 'break-all';
+      a.textContent = url;
+      sheet.appendChild(a);
+      opt(sheet, 'Copier l’adresse', '', function () {
+        closeSheet();
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { toast('Adresse copiée'); }, function () { toast('Copie refusée.'); });
+        else toast('Copie impossible ici.');
+      });
+      if (navigator.share) opt(sheet, 'Partager l’adresse…', '', function () { closeSheet(); navigator.share({ title: 'Noteo', url: url }).catch(function () { /* annulé */ }); });
+      opt(sheet, 'Fermer', '', closeSheet);
+    });
+  });
   tabFolders.addEventListener('click', function () {
     if (state.view === 'folders') { state.view = 'notes'; if (state.folder === FAVORITES || state.folder === ALL) state.folder = DEFAULT_FOLDER; }
     else { state.view = 'folders'; state.browse = null; }
