@@ -113,7 +113,7 @@
   // ---------- État ----------
   var state = {
     view: 'notes',            // 'notes' | 'folders'
-    folder: DEFAULT_FOLDER,   // dossier dont on voit les notes (ou FAVORITES)
+    folder: ALL,              // dossier dont on voit les notes (ou FAVORITES) ; au démarrage : toutes les notes
     browse: null,             // dossier parent affiché dans la vue "Dossier" (null = racine)
     query: ''
   };
@@ -2810,7 +2810,7 @@
     closeSheet();
     editorEl.hidden = true;
     accountEl.hidden = true;
-    state.view = 'notes'; state.folder = DEFAULT_FOLDER; state.query = ''; searchEl.value = '';
+    state.view = 'notes'; state.folder = ALL; state.query = ''; searchEl.value = '';
     $('login-pass').value = '';
     $('login-err').textContent = '';
     startGates();
@@ -3057,6 +3057,8 @@
     $('acc-btn-pass').hidden = type !== 'local';
     $('acc-logout').hidden = !(type === 'local' || type === 'online');
     $('acc-pin-on').checked = pinEnabled() && !!read('noteo-app-pin-hash');
+    if ($('acc-username') && type === 'online' && !read('noteo-username') && onlineAccount()) write('noteo-username', onlineAccount().email);
+    if ($('acc-username')) $('acc-username').value = read('noteo-username') || '';
     if ($('acc-stay')) { $('acc-stay').checked = staySignedIn(); $('acc-stay').closest('label').hidden = type !== 'online'; }
     $('acc-pin-label').textContent = read('noteo-app-pin-hash') ? 'Modifier le code PIN' : 'Définir le code PIN';
   }
@@ -3256,6 +3258,7 @@
     write('noteo-online-account', JSON.stringify({ username: email, email: email }));
     write('noteo-remembered-email', email);
     write('noteo-account-type', 'online');
+    if (!read('noteo-username')) write('noteo-username', email);   // comme sur PC : l'email sert de nom d'utilisateur par défaut
     sset('noteo-login-unlocked', 'true');
     saveDeviceVault(email, sget('noteo-online-password'));
     syncOnlineNow(true).catch(function () {});
@@ -3675,7 +3678,7 @@
     if (sp === 'pc' && accountType() !== 'online') { needOnlineSheet('voir l’espace ordinateur'); return; }
     try { sessionStorage.setItem('noteo-space', sp); } catch (e) { /* ignoré */ }
     sel.on = false; sel.ids = {};
-    state.view = 'notes'; state.folder = DEFAULT_FOLDER; state.browse = null; state.query = ''; searchEl.value = '';
+    state.view = 'notes'; state.folder = ALL; state.browse = null; state.query = ''; searchEl.value = '';
     render();
     if (sp === 'pc') syncOnlineNow(true).catch(function () {});
   }

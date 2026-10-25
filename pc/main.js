@@ -386,6 +386,33 @@ ipcMain.handle('open-external-link', async (event, url) => {
   shell.openExternal(url);
 });
 
+// Version téléphone de Noteo, affichée dans sa propre fenêtre (format téléphone) au lieu du navigateur.
+// La fenêtre garde ses propres données (partition) : on s'y connecte une fois avec le compte en ligne.
+let phoneWindow = null;
+ipcMain.handle('open-phone-window', async (event, url) => {
+  if (typeof url !== 'string' || !/^https:\/\/\S+$/i.test(url)) return false;
+  if (phoneWindow && !phoneWindow.isDestroyed()) {
+    if (phoneWindow.isMinimized()) phoneWindow.restore();
+    phoneWindow.focus();
+    return true;
+  }
+  phoneWindow = new BrowserWindow({
+    width: 440,
+    height: 880,
+    minWidth: 360,
+    minHeight: 600,
+    title: 'Noteo : version téléphone',
+    backgroundColor: '#0e0e12',
+    autoHideMenuBar: true,
+    webPreferences: { partition: 'persist:noteo-phone', contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  phoneWindow.removeMenu();
+  phoneWindow.webContents.setWindowOpenHandler(({ url: u }) => { if (/^https:/i.test(u)) shell.openExternal(u); return { action: 'deny' }; });
+  phoneWindow.on('closed', () => { phoneWindow = null; });
+  phoneWindow.loadURL(url).catch(() => {});
+  return true;
+});
+
 // Sauvegarde de secours d'un compte local/en ligne (notes, dossiers, identifiants),
 // stockée hors du dossier userData pour survivre à une désinstallation de Noteo.
 ipcMain.handle('save-account-backup', async (event, data) => {

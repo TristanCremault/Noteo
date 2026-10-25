@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   getBackgroundFull: (name) => ipcRenderer.invoke('get-background-full', name),
   openBackgroundsFolder: () => ipcRenderer.invoke('open-backgrounds-folder'),
   openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
+  openPhoneWindow: (url) => ipcRenderer.invoke('open-phone-window', url),
   saveAccountBackup: (data) => ipcRenderer.invoke('save-account-backup', data),
   loadAccountBackup: () => ipcRenderer.invoke('load-account-backup'),
   deleteAccountBackup: () => ipcRenderer.invoke('delete-account-backup'),

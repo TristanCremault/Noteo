@@ -1347,8 +1347,11 @@ async function changePhoneUrl() {
 const btnPhoneVersion = document.getElementById('btn-phone-version');
 btnPhoneVersion.addEventListener('click', async () => {
   let url = localStorage.getItem(PHONE_URL_KEY) || PHONE_URL_DEFAULT;
+  // une adresse enregistrée qui n'est pas celle de Noteo (ancienne saisie) est ignorée
+  if (!/noteo/i.test(url)) { localStorage.removeItem(PHONE_URL_KEY); url = PHONE_URL_DEFAULT; }
   if (!url) url = await changePhoneUrl();
   if (!url) return;
+  if (window.api && window.api.openPhoneWindow) { window.api.openPhoneWindow(url); return; }   // fenêtre Noteo au format téléphone
   if (window.api && window.api.openExternalLink) window.api.openExternalLink(url);
   else window.open(url, '_blank');
 });
