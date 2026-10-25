@@ -22,11 +22,20 @@ jobs:
         with:
           node-version: 22
 
+      - name: Vérifier que tous les fichiers sont là
+        shell: pwsh
+        run: |
+          $need = 'package.json','main.js','preload.js','index.html','build/icon.ico','installer/Noteo.iss','installer/assets/slide1.bmp','installer/assets/wizard-164.bmp','fonds-defaut/fond1.jpg','JS/compte.js','CSS/style.css'
+          $missing = $need | Where-Object { -not (Test-Path $_) }
+          if ($missing) { Write-Error ("Fichiers manquants dans le dossier pc : " + ($missing -join ', ')); exit 1 }
+
       - name: Installer les dépendances
         run: npm install
 
       - name: Préparer l'application (electron-builder)
         run: npm run pack
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: Installer Inno Setup
         shell: pwsh
