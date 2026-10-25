@@ -1,0 +1,6 @@
+node_modules/
+_site/
+phone/www/
+phone/android/
+pc/dist/
+pc/installer/Output/
