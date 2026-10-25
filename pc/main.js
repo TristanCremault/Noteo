@@ -418,8 +418,7 @@ ipcMain.handle('delete-account-backup', async () => {
   }
 });
 
-// "Partager" une note : l'exporter dans un vrai fichier (HTML, texte brut, PDF
-// ou ODT) que l'utilisateur peut ensuite envoyer par mail, clé USB, etc.
+// "Partager" une note : l'exporter dans un vrai fichier (PDF, ODT ou texte brut) que l'utilisateur peut ensuite envoyer par mail, clé USB, etc.
 ipcMain.handle('export-note', async (event, { title, htmlContent }) => {
   const safeTitle = (title || 'Note').replace(/[\\/:*?"<>|]/g, '_');
 
@@ -429,7 +428,6 @@ ipcMain.handle('export-note', async (event, { title, htmlContent }) => {
     filters: [
       { name: 'Document PDF', extensions: ['pdf'] },
       { name: 'Document OpenDocument (ODT)', extensions: ['odt'] },
-      { name: 'Page HTML', extensions: ['html'] },
       { name: 'Texte brut', extensions: ['txt'] }
     ]
   });
@@ -460,8 +458,9 @@ ipcMain.handle('export-note', async (event, { title, htmlContent }) => {
         .replace(/&gt;/g, '>');
       fs.writeFileSync(result.filePath, output, 'utf-8');
     } else {
-      const output = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + safeTitle + '</title></head><body>' + htmlContent + '</body></html>';
-      fs.writeFileSync(result.filePath, output, 'utf-8');
+      // extension inconnue : on enregistre un PDF
+      const paragraphs = htmlToParagraphs(htmlContent);
+      fs.writeFileSync(result.filePath, await buildPdfBuffer(title || 'Note', paragraphs));
     }
     return { canceled: false, filePath: result.filePath };
   } catch (err) {

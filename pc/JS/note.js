@@ -700,7 +700,7 @@ btnSpellcheck.addEventListener('click', () => {
 
 updateSpellcheckLabel();
 
-// --- Partager la note (export dans un vrai fichier .html ou .txt) ---
+// --- Partager la note (export PDF, ODT ou texte) ---
 
 btnShare.addEventListener('click', async () => {
   if (!window.api || !window.api.exportNote) {

@@ -1599,7 +1599,7 @@
     });
   }
 
-  // Partage : texte, copie, ou fichier .txt / .html
+  // Partage : texte, copie, ou fichier .txt / .pdf / .odt
   function noteText() {
     var title = titleEl.value.trim() || 'Sans titre';
     var tmp = document.createElement('div');
@@ -1654,11 +1654,7 @@
         else toast('Copie impossible ici.');
       });
       opt(sheet, 'Télécharger en texte (.txt)', '', function () { var n = noteText(); closeSheet(); downloadFile(safe + '.txt', 'text/plain;charset=utf-8', n.title + '\n\n' + n.text); });
-      opt(sheet, 'Télécharger en page web (.html)', '', function () {
-        closeSheet();
-        downloadFile(safe + '.html', 'text/html;charset=utf-8', '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escHtml(safe) + '</title></head><body>' + bodyEl.innerHTML + '</body></html>');
-      });
-      opt(sheet, 'Exporter en PDF', '', function () { closeSheet(); printNote(); });
+      opt(sheet, 'Enregistrer ou envoyer en PDF', '', function () { var n = noteText(); closeSheet(); downloadFile(safe + '.pdf', 'application/pdf', pdfBytes(n.title, n.text)); });
       opt(sheet, 'Télécharger en document (.odt)', '', function () { var n = noteText(); closeSheet(); downloadFile(safe + '.odt', 'application/vnd.oasis.opendocument.text', odtBytes(n.title, bodyEl.innerHTML)); });
     });
   }
@@ -2036,6 +2032,73 @@
       var acc = onlineAccount(), pw = sget('noteo-online-password');
       if (accountType() === 'online' && acc && acc.email && pw && !hasPinVault()) await savePinVault(pin, acc.email, pw);
     } catch (e) { /* non bloquant */ }
+  }
+
+
+  // ----- Rester connecté sur cet appareil -----
+  // Le mot de passe est chiffré avec une clé générée sur l'appareil et non exportable (stockée dans IndexedDB).
+  function dvOpen() {
+    return new Promise(function (res, rej) {
+      var r = indexedDB.open('noteo-device', 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore('k'); };
+      r.onsuccess = function () { res(r.result); };
+      r.onerror = function () { rej(r.error); };
+    });
+  }
+  async function dvOp(mode, fn) {
+    var db = await dvOpen();
+    return new Promise(function (res, rej) {
+      var tx = db.transaction('k', mode), st = tx.objectStore('k'), rq = fn(st);
+      tx.oncomplete = function () { db.close(); res(rq && rq.result); };
+      tx.onerror = tx.onabort = function () { db.close(); rej(tx.error); };
+    });
+  }
+  function staySignedIn() { return read('noteo-stay-signed-in') !== 'false'; }
+  async function saveDeviceVault(email, password) {
+    try {
+      if (!staySignedIn() || !window.indexedDB || !email || !password) return;
+      var key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+      var enc = await olEncrypt(key, { email: email, password: password });
+      await dvOp('readwrite', function (st) { return st.put(key, 'key'); });
+      write('noteo-device-vault', JSON.stringify({ iv: enc.iv, blob: enc.blob }));
+    } catch (e) { /* non bloquant */ }
+  }
+  async function openDeviceVault() {
+    try {
+      var v = JSON.parse(read('noteo-device-vault') || 'null');
+      if (!v || !staySignedIn()) return null;
+      var key = await dvOp('readonly', function (st) { return st.get('key'); });
+      if (!key) return null;
+      return await olDecrypt(key, v.iv, v.blob);
+    } catch (e) { return null; }
+  }
+  function clearDeviceVault() {
+    rdel('noteo-device-vault');
+    try { dvOp('readwrite', function (st) { return st.delete('key'); }).catch(function () {}); } catch (e) { /* ignoré */ }
+  }
+  // Ouvre l'appli tout de suite avec le mot de passe retrouvé ; la connexion au serveur se fait ensuite en arrière-plan
+  async function quickResume(cred) {
+    var acc = onlineAccount();
+    if (!cred || !cred.email || !cred.password || !acc || acc.email !== cred.email) return false;
+    if (!startOfflineSession(cred.password)) return false;
+    sset('noteo-login-unlocked', 'true');
+    setTimeout(function () { backgroundSignIn(cred); }, 60);
+    return true;
+  }
+  async function backgroundSignIn(cred) {
+    var r = await onlineSignIn(cred.email, cred.password);
+    if (r.offline) return;
+    if (r.error) {
+      if (/incorrect|déchiffrer/i.test(r.error)) {   // mot de passe changé ailleurs : on le redemande
+        rdel('noteo-online-pin-vault');
+        clearDeviceVault();
+        logout(false).then(function () { $('login-err').textContent = 'Ton mot de passe a changé : reconnecte-toi.'; });
+      }
+      return;
+    }
+    completeOnlineLogin(cred.email, r);
+    render();
+    refreshAccount();
   }
 
   // --- Client HTTP Supabase ---
@@ -2736,6 +2799,7 @@
     if (accountType() === 'online') {
       try { await onlineSignOut(); } catch (e) { /* ignoré */ }
       rdel('noteo-online-pin-vault');
+      clearDeviceVault();
       if (forgetEmail) rdel('noteo-remembered-email');
     }
     sdel('noteo-login-unlocked');
@@ -2754,7 +2818,90 @@
   $('acc-logout').addEventListener('click', function () { logout(false); });
   $('pin-logout').addEventListener('click', function () { logout(true); });
 
-  // ----- Export : PDF (impression) et ODT -----
+  // ----- Export : PDF et ODT -----
+
+  // ----- PDF généré directement (texte), sans bibliothèque : fonctionne aussi dans l'APK -----
+  var PDF_W = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+  var PDF_CP = { 0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02C6: 0x88, 0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C, 0x017D: 0x8E, 0x2018: 0x91, 0x2019: 0x92, 0x201C: 0x93, 0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B, 0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F };
+  function pdfChar(c) {
+    if (c === 0x09) return 0x20;
+    if (c >= 0x20 && c < 0x7F) return c;
+    if (c === 0xA0 || c === 0x202F) return 0x20;
+    if (c >= 0xA1 && c <= 0xFF) return c;
+    return PDF_CP[c] || 0;   // inconnu (émojis…) : ignoré
+  }
+  function pdfWidth(code) { return code >= 32 && code <= 126 ? PDF_W[code - 32] : 556; }
+  function pdfBytes(title, text) {
+    var PW = 595, PH = 842, M = 56, FS = 11, LEAD = 16, TS = 20, maxW = PW - 2 * M;
+    function encode(str) {
+      var out = [];
+      for (var i = 0; i < str.length; i++) {
+        var cp = str.codePointAt(i);
+        if (cp > 0xFFFF) i++;
+        var c = pdfChar(cp);
+        if (c) out.push(c);
+      }
+      return out;
+    }
+    function wrap(str, size, bold) {
+      var lines = [], words = str.split(/ +/), cur = [], curW = 0, k = bold ? 1.07 : 1;
+      function w(arr) { var t = 0; for (var i = 0; i < arr.length; i++) t += pdfWidth(arr[i]); return t * size * k / 1000; }
+      words.forEach(function (word) {
+        var arr = encode(word);
+        if (!arr.length) return;
+        var sp = cur.length ? 32 : null, ww = w(arr), spW = sp ? pdfWidth(32) * size * k / 1000 : 0;
+        if (cur.length && curW + spW + ww > maxW) { lines.push(cur); cur = []; curW = 0; sp = null; spW = 0; }
+        while (ww > maxW) {   // mot plus long que la ligne : on le coupe
+          var n = 1; while (n < arr.length && w(arr.slice(0, n + 1)) <= maxW) n++;
+          if (cur.length) { lines.push(cur); cur = []; curW = 0; }
+          lines.push(arr.slice(0, n)); arr = arr.slice(n); ww = w(arr);
+        }
+        if (cur.length) { cur = cur.concat([32], arr); curW += spW + ww; } else { cur = arr; curW = ww; }
+      });
+      if (cur.length) lines.push(cur);
+      return lines;
+    }
+    var items = [];   // { codes, size, bold, gap }
+    wrap(title, TS, true).forEach(function (l) { items.push({ c: l, size: TS, bold: true, lead: TS + 6 }); });
+    items.push({ c: [], size: FS, bold: false, lead: 10 });
+    String(text).split('\n').forEach(function (para) {
+      var ls = wrap(para, FS, false);
+      if (!ls.length) { items.push({ c: [], size: FS, bold: false, lead: LEAD }); return; }
+      ls.forEach(function (l) { items.push({ c: l, size: FS, bold: false, lead: LEAD }); });
+    });
+    var pages = [[]], y = PH - M;
+    items.forEach(function (it) {
+      if (y - it.lead < M) { pages.push([]); y = PH - M; }
+      y -= it.lead;
+      pages[pages.length - 1].push({ it: it, y: y });
+    });
+    function pstr(codes) { var o = ''; codes.forEach(function (c) { o += (c === 0x28 || c === 0x29 || c === 0x5C) ? '\\' + String.fromCharCode(c) : String.fromCharCode(c); }); return o; }
+    var objs = [];
+    objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+    var kids = [];
+    pages.forEach(function (_, i) { kids.push((5 + i * 2) + ' 0 R'); });
+    objs[2] = '<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + pages.length + ' >>';
+    objs[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+    objs[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+    pages.forEach(function (pg, i) {
+      var cs = '';
+      pg.forEach(function (p) {
+        if (!p.it.c.length) return;
+        cs += 'BT /' + (p.it.bold ? 'F2' : 'F1') + ' ' + p.it.size + ' Tf ' + M + ' ' + p.y + ' Td (' + pstr(p.it.c) + ') Tj ET\n';
+      });
+      objs[5 + i * 2] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + PW + ' ' + PH + '] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' + (6 + i * 2) + ' 0 R >>';
+      objs[6 + i * 2] = '<< /Length ' + cs.length + ' >>\nstream\n' + cs + 'endstream';
+    });
+    var out = '%PDF-1.4\n', offs = [];
+    for (var n = 1; n < objs.length; n++) { offs[n] = out.length; out += n + ' 0 obj\n' + objs[n] + '\nendobj\n'; }
+    var xref = out.length;
+    out += 'xref\n0 ' + objs.length + '\n0000000000 65535 f \n';
+    for (n = 1; n < objs.length; n++) out += ('0000000000' + offs[n]).slice(-10) + ' 00000 n \n';
+    out += 'trailer\n<< /Size ' + objs.length + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+    var bytes = new Uint8Array(out.length);
+    for (var j = 0; j < out.length; j++) bytes[j] = out.charCodeAt(j) & 255;
+    return bytes;
+  }
   function printNote() {
     if (nativePlugins()) { toast('PDF indisponible dans l’APK : utilise .odt ou .html.'); return; }
     var n = noteText();
@@ -2910,6 +3057,7 @@
     $('acc-btn-pass').hidden = type !== 'local';
     $('acc-logout').hidden = !(type === 'local' || type === 'online');
     $('acc-pin-on').checked = pinEnabled() && !!read('noteo-app-pin-hash');
+    if ($('acc-stay')) { $('acc-stay').checked = staySignedIn(); $('acc-stay').closest('label').hidden = type !== 'online'; }
     $('acc-pin-label').textContent = read('noteo-app-pin-hash') ? 'Modifier le code PIN' : 'Définir le code PIN';
   }
 
@@ -3082,6 +3230,7 @@
           $('acc-username').value = read('noteo-username') || '';
           touchProfileField('displayName');
           sset('noteo-login-unlocked', 'true');
+          saveDeviceVault(data.email, data.password);
           closeSheet();
           refreshAccount();
           toast('Compte en ligne créé');
@@ -3108,6 +3257,7 @@
     write('noteo-remembered-email', email);
     write('noteo-account-type', 'online');
     sset('noteo-login-unlocked', 'true');
+    saveDeviceVault(email, sget('noteo-online-password'));
     syncOnlineNow(true).catch(function () {});
   }
 
@@ -3222,12 +3372,20 @@
     else pinSetupSheet();
   });
   $('acc-pin-on').addEventListener('click', function (e) {
-    e.preventDefault();   // on décide nous-mêmes de l'état de la case
+    e.preventDefault();   // on décide nous-mêmes de l'état de la case (rafraîchie après coup, sinon le navigateur la remet comme avant)
+    var later = function () { setTimeout(refreshAccount, 0); };
     if (!pinEnabled() || !read('noteo-app-pin-hash')) {
       if (!read('noteo-app-pin-hash')) { pinSetupSheet(); return; }
-      write('noteo-app-pin-enabled', 'true');
-      touchProfileField('pin');
-      refreshAccount();
+      authSheet(storedPin(), 'Entre ton code PIN pour le réactiver', async function (code) {
+        write('noteo-app-pin-enabled', 'true');
+        touchProfileField('pin');
+        sset('noteo-pin-unlocked', 'true');
+        await ensurePinVault(code);
+        refreshAccount();
+        toast('Code PIN réactivé');
+        return true;
+      }, 'app-pin', pinLabels);
+      later();
       return;
     }
     authSheet(storedPin(), 'Confirme ton code PIN pour désactiver la sécurité', function () {
@@ -3237,6 +3395,13 @@
       refreshAccount();
       return true;
     }, 'app-pin', pinLabels);
+    later();
+  });
+  var stayBox = $('acc-stay');
+  if (stayBox) stayBox.addEventListener('change', function () {
+    write('noteo-stay-signed-in', stayBox.checked ? 'true' : 'false');
+    if (!stayBox.checked) clearDeviceVault();
+    else { var a = onlineAccount(); if (a && sget('noteo-online-password')) saveDeviceVault(a.email, sget('noteo-online-password')); }
   });
 
   // Supprimer le compte / tout réinitialiser
@@ -3315,21 +3480,29 @@
       showApp();
     }
   }
-  function startGates() {
+  function startGates(skipDevice) {
     var t = accountType();
+    if (!skipDevice && t === 'online' && onlineAccount() && sget('noteo-login-unlocked') !== 'true' && read('noteo-device-vault') && staySignedIn()) {
+      appEl.hidden = true; loginGate.hidden = true; pinGate.hidden = true;
+      openDeviceVault().then(quickResume).then(function (ok) {
+        if (ok) { maybePinGate(); render(); refreshAccount(); } else startGates(true);
+      }, function () { startGates(true); });
+      return;
+    }
     if (t === 'online' && onlineAccount() && sget('noteo-login-unlocked') !== 'true' && pinEnabled() && read('noteo-app-pin-hash') && hasPinVault()) {
       showPinGate('vault');   // le PIN suffit : il rouvre le coffre qui contient le mot de passe
       return;
     }
     if (((t === 'local' && localAccount()) || (t === 'online' && onlineAccount())) && sget('noteo-login-unlocked') !== 'true') {
       appEl.hidden = true;
+      pinGate.hidden = true;
       loginGate.hidden = false;
       var lu = $('login-user');
       if (t === 'online') {
         lu.type = 'email'; lu.placeholder = 'Adresse email'; lu.autocomplete = 'email';
         lu.value = (onlineAccount().email) || read('noteo-remembered-email') || '';
         $('login-reset').textContent = 'Mot de passe oublié ? Repartir de zéro';
-      } else { lu.type = 'text'; lu.placeholder = 'Identifiant'; lu.autocomplete = 'username'; }
+      } else { lu.type = 'text'; lu.placeholder = 'Identifiant'; lu.autocomplete = 'username'; lu.value = (localAccount() && localAccount().username) || ''; }
       (lu.value ? $('login-pass') : lu).focus();
     } else {
       maybePinGate();
@@ -3414,21 +3587,22 @@
     var stored = storedPin();
     var btn = $('pin-btn');
     btn.disabled = true;
-    var ok = code !== '' && stored && await verifySecretHash(code, stored);
+    var cred = null;
+    if (pinGateMode === 'vault' && code !== '') cred = await openPinVault(code);   // un coffre qui s'ouvre prouve déjà que le PIN est bon
+    var ok = !!cred || (code !== '' && stored && await verifySecretHash(code, stored));
     btn.disabled = false;
     if (ok && pinGateMode === 'vault') {
       attemptClear('app-pin');
       btn.disabled = true;
-      err.textContent = 'Connexion…';
-      var cred = await openPinVault(code);
-      var back = function (msg) { btn.disabled = false; rdel('noteo-online-pin-vault'); pinGate.hidden = true; startGates(); $('login-err').textContent = msg; };
+      err.textContent = 'Ouverture…';
+      var back = function (msg) { btn.disabled = false; rdel('noteo-online-pin-vault'); pinGate.hidden = true; startGates(true); $('login-err').textContent = msg; };
       if (!cred || !cred.email || !cred.password) { back('Ton mot de passe n’a pas pu être retrouvé : reconnecte-toi une fois avec.'); return; }
-      var r = await onlineSignIn(cred.email, cred.password);
-      if (r.offline) {
-        if (!(await checkOfflineLogin(cred.email, cred.password) && startOfflineSession(cred.password))) { back('Pas de connexion internet. Réessaie une fois en ligne.'); return; }
-        sset('noteo-login-unlocked', 'true');
-      } else if (r.error) { back(r.error); return; }
-      else completeOnlineLogin(cred.email, r);
+      if (!(await quickResume(cred))) {   // pas de copie locale utilisable : connexion complète
+        var r = await onlineSignIn(cred.email, cred.password);
+        if (r.offline) { back('Pas de connexion internet. Réessaie une fois en ligne.'); return; }
+        if (r.error) { back(r.error); return; }
+        completeOnlineLogin(cred.email, r);
+      }
       btn.disabled = false;
       err.textContent = '';
       sset('noteo-pin-unlocked', 'true');
@@ -3447,7 +3621,7 @@
     }
   }
   $('pin-btn').addEventListener('click', attemptPinUnlock);
-  $('pin-use-pass').addEventListener('click', function () { pinGateMode = 'normal'; pinGate.hidden = true; $('login-err').textContent = ''; var keep = read('noteo-online-pin-vault'); rdel('noteo-online-pin-vault'); startGates(); if (keep) write('noteo-online-pin-vault', keep); });
+  $('pin-use-pass').addEventListener('click', function () { pinGateMode = 'normal'; pinGate.hidden = true; $('login-err').textContent = ''; var keep = read('noteo-online-pin-vault'); rdel('noteo-online-pin-vault'); startGates(true); if (keep) write('noteo-online-pin-vault', keep); });
   $('pin-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') attemptPinUnlock(); });
 
   $('acc-theme').addEventListener('change', function () {
