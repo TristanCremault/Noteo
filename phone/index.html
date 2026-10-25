@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#0e0e12">
+  <title>Noteo</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Marges de sécurité (encoche, barre de gestes) pour l'appli installée */
+    /*SAFE-START*/ html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); } /*SAFE-END*/
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="top-row">
+        <h1 class="brand">Note<span>o</span></h1>
+        <button id="btn-logo" class="logo-btn" aria-label="Espace compte"><img src="icons/logo-small.png" alt=""></button>
+      </div>
+      <input id="search" class="search" type="search" placeholder="Rechercher dans Noteo" autocomplete="off" enterkeyhint="search">
+      <p id="space-banner" class="space-banner" hidden></p>
+      <div class="pinned"><button id="pin-fav" class="pin" aria-current="false">★ Favoris</button><button id="pin-select" class="pin" type="button" aria-pressed="false">Sélectionner</button><button id="pin-phone" class="pin" type="button">Version ordinateur</button></div>
+      <div class="crumb-row">
+        <h2 id="crumb" class="crumb">Sans catégorie</h2>
+        <div id="crumb-actions" style="display:flex;gap:8px"></div>
+      </div>
+    </header>
+
+    <main id="list" class="list" aria-live="polite"></main>
+
+    <nav class="bottom" aria-label="Navigation principale">
+      <button id="tab-all" class="tab" aria-current="false">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8.5h6M9 12h6M9 15.5h4"/></svg>
+        Tous
+      </button>
+      <button id="btn-new" class="fab" aria-label="Nouvelle note">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button id="tab-folders" class="tab" aria-current="false">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        Dossier
+      </button>
+    </nav>
+    <nav id="selbar" class="bottom selbar" aria-label="Actions sur la sélection" hidden>
+      <button id="sel-dup" class="tab" type="button">Dupliquer</button>
+      <button id="sel-move" class="tab" type="button">Déplacer</button>
+      <button id="sel-space" class="tab" type="button">Vers PC</button>
+      <button id="sel-del" class="tab danger" type="button">Supprimer</button>
+      <button id="sel-cancel" class="tab" type="button">Annuler</button>
+    </nav>
+  </div>
+
+  <!-- Éditeur de note (plein écran) -->
+  <div id="editor" class="editor" hidden>
+    <div class="editor-inner">
+      <div class="editor-bar">
+        <button id="btn-editor-back" class="icon-btn" aria-label="Retour">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+        </button>
+        <span id="save-status" class="save-status" role="status"></span>
+        <div class="editor-actions">
+          <button id="btn-editor-fav" class="icon-btn" aria-label="Favori" aria-pressed="false">☆</button>
+          <button id="btn-editor-delete" class="icon-btn danger-btn" aria-label="Supprimer la note">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>
+          </button>
+        </div>
+      </div>
+      <input id="note-title" class="note-title" type="text" placeholder="Nom de la note…" maxlength="200" autocomplete="off">
+      <button id="note-in-folder" class="folder-line" type="button"></button>
+
+      <div id="unlock-bar" class="unlock-bar" hidden>
+        <span>🔒 Note protégée en modification</span>
+        <button id="btn-unlock-edit" class="chip">Déverrouiller</button>
+      </div>
+
+      <div id="fmt-row" class="fmt-row">
+        <div id="fmt" class="fmt" role="toolbar" aria-label="Mise en forme">
+          <button data-act="undo" data-edit="1" aria-label="Annuler">↶</button>
+          <button data-act="redo" data-edit="1" aria-label="Rétablir">↷</button>
+          <button data-act="copy" aria-label="Copier"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg></button>
+          <button data-act="paste" data-edit="1" aria-label="Coller"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1M9 12h6M9 16h4"/></svg></button>
+          <button data-act="find" aria-label="Rechercher dans la note"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.2-4.2"/></svg></button>
+          <button data-act="bold" data-edit="1" aria-label="Gras"><b>G</b></button>
+          <button data-act="italic" data-edit="1" aria-label="Italique"><i>I</i></button>
+          <button data-act="underline" data-edit="1" aria-label="Souligné"><u>S</u></button>
+          <button data-act="highlight" data-edit="1" aria-label="Surligner">🖍</button>
+          <button data-act="color" data-edit="1" aria-label="Couleur du texte"><span class="acolor">A</span></button>
+        </div>
+        <button data-act="more" class="more-opts" type="button" aria-label="Plus d’options">Options ▾</button>
+      </div>
+      <input type="file" id="img-file" accept="image/*" hidden>
+
+      <div id="find-bar" class="find-bar" hidden>
+        <input id="find-input" type="search" placeholder="Rechercher dans la note…" autocomplete="off">
+        <button id="find-prev" class="icon-btn" aria-label="Précédent">▲</button>
+        <button id="find-next" class="icon-btn" aria-label="Suivant">▼</button>
+        <button id="find-close" class="icon-btn" aria-label="Fermer">✕</button>
+      </div>
+
+      <div id="note-body" class="note-body" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Contenu de la note" data-placeholder="Contenu de la note…"></div>
+      <p id="editor-foot" class="editor-foot"></p>
+    </div>
+  </div>
+
+  <!-- Espace compte (plein écran) : boutons seulement pour l'instant -->
+  <div id="account" class="account" hidden>
+    <div class="account-inner">
+      <div class="account-bar">
+        <button id="btn-account-back" class="icon-btn" aria-label="Retour">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+        </button>
+        <h2 class="account-title">Espace compte</h2>
+        <span class="account-bar-spacer"></span>
+      </div>
+
+      <div class="account-scroll">
+        <section class="acc-hero">
+          <div class="acc-avatar" id="acc-avatar"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c.8-3.6 3.8-5.5 7.5-5.5s6.7 1.9 7.5 5.5"/></svg></div>
+          <p class="acc-welcome">Bienvenue dans votre espace personnel</p>
+          <button class="acc-btn" id="acc-btn-photo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span id="acc-photo-label">Importer votre photo de profil</span></button>
+        </section>
+
+        <section class="acc-card">
+          <label class="acc-label" for="acc-username">Nom d’utilisateur</label>
+          <input id="acc-username" class="acc-field" type="text" placeholder="Nom d’utilisateur" autocomplete="off">
+          <label class="acc-label" for="acc-display">Nom d’affichage</label>
+          <input id="acc-display" class="acc-field" type="text" placeholder="Nom d’affichage" autocomplete="off">
+        </section>
+
+        <section class="acc-card">
+          <label class="acc-label" for="acc-lang">Langue</label>
+          <select id="acc-lang" class="acc-field">
+            <option value="fr">Français</option><option value="en">Anglais</option><option value="es">Espagnol</option>
+            <option value="de">Allemand</option><option value="it">Italien</option><option value="pt">Portugais</option>
+          </select>
+          <label class="acc-label" for="acc-theme">Thème</label>
+          <select id="acc-theme" class="acc-field">
+            <option value="dark">Thème sombre</option><option value="light">Thème clair</option>
+          </select>
+        </section>
+
+        <section class="acc-stack">
+          <button class="acc-btn" id="acc-btn-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-1-.8-1.4-.8-2.3 0-.9.7-1.5 1.7-1.5H17a4 4 0 0 0 4-4C21 7 17 3 12 3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7.5" r="1"/><circle cx="14.5" cy="7.5" r="1"/></svg><span>Fond de l’application</span></button>
+          <button class="acc-btn" id="acc-btn-lockpass"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="m11 11 8-8M16 6l3 3M14 8l2 2"/></svg><span>Changer le mot de passe du dossier verrouillé<small>par défaut : 000000</small></span></button>
+          <button class="acc-btn" id="acc-btn-pass" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="m11 11 8-8M16 6l3 3M14 8l2 2"/></svg><span>Changer le mot de passe du compte</span></button>
+        </section>
+
+        <section class="acc-card">
+          <p class="acc-label">Sécurité de l’application</p>
+          <label class="check"><input type="checkbox" id="acc-pin-on"><span>Demander un code PIN à l’ouverture de Noteo</span></label>
+          <button class="acc-btn" id="acc-btn-pin"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="m11 11 8-8M16 6l3 3M14 8l2 2"/></svg><span id="acc-pin-label">Définir le code PIN</span></button>
+        </section>
+
+        <h3 class="acc-section">Choisissez votre système de compte</h3>
+        <section class="acc-types">
+          <button class="acc-type" data-type="none">
+            <span class="acc-type-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg></span>
+            <span class="acc-type-text"><strong>Aucun compte</strong><small>Tes notes restent uniquement sur ton appareil. Aucune connexion nécessaire. En cas de désinstallation, elles peuvent être perdues.</small></span>
+          </button>
+          <button class="acc-type" data-type="local">
+            <span class="acc-type-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
+            <span class="acc-type-text"><strong>Compte local</strong><small>Un nom d’utilisateur et un mot de passe. Tes notes restent stockées sur cet appareil.</small></span>
+          </button>
+          <button class="acc-type" data-type="online">
+            <span class="acc-type-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-8A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 17 18z"/></svg></span>
+            <span class="acc-type-text"><strong>Compte en ligne</strong><small>Retrouve tes notes sur n’importe quel appareil, synchronisées en ligne.</small></span>
+          </button>
+        </section>
+        <p id="acc-current" class="acc-current">Système actuel : Aucun compte</p>
+
+        <section class="acc-stack acc-danger">
+          <button class="acc-btn" id="acc-logout" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3M16 8l4 4-4 4M20 12H9"/></svg><span>Déconnexion</span></button>
+          <button class="acc-btn danger" id="acc-del"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg><span>Supprimer le compte</span></button>
+          <button class="acc-btn danger" id="acc-reset"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 3-6.2M4 4v5h5"/></svg><span>Réinitialiser le compte</span></button>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Écran de connexion (compte local) -->
+  <div id="login-gate" class="gate" hidden>
+    <img class="gate-wm" src="icons/logo-wm.png" alt="">
+    <div class="gate-card">
+      <h1 class="gate-title">Bon retour sur Noteo</h1>
+      <p class="gate-tag">Écris librement, on sécurise le reste.</p>
+      <input id="login-user" class="acc-field" type="text" placeholder="Identifiant" autocomplete="username" autocapitalize="off">
+      <input id="login-pass" class="acc-field" type="password" placeholder="Mot de passe" autocomplete="current-password">
+      <p id="login-err" class="hint err" role="alert"></p>
+      <button id="login-btn" class="chip primary gate-btn">Connexion</button>
+      <button id="login-reset" class="gate-link" type="button">Mot de passe oublié ? Repartir de zéro</button>
+    </div>
+  </div>
+
+  <!-- Écran du code PIN à l'ouverture -->
+  <div id="pin-gate" class="gate" hidden>
+    <img class="gate-wm" src="icons/logo-wm.png" alt="">
+    <div class="gate-card">
+      <h1 class="gate-title">Noteo verrouillé</h1>
+      <p id="pin-tag" class="gate-tag">Entre ton code PIN pour continuer.</p>
+      <input id="pin-input" class="acc-field" type="password" placeholder="Code PIN" autocomplete="off">
+      <p id="pin-err" class="hint err" role="alert"></p>
+      <button id="pin-btn" class="chip primary gate-btn">Déverrouiller</button>
+      <button id="pin-use-pass" class="gate-link" type="button" hidden>Utiliser mon mot de passe</button>
+      <button id="pin-logout" class="gate-link" type="button" hidden>Déconnexion</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

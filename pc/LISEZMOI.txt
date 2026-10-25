@@ -1,0 +1,27 @@
+NOTEO - PROJET COMPLET
+======================
+
+Contenu : toute l'application (code, pages, styles), l'installateur Inno Setup,
+les 14 fonds d'écran par défaut et la base Supabase (supabase-setup.sql).
+Non inclus (se recrée tout seul) : node_modules et dist.
+
+1) PREMIÈRE FOIS, dans ce dossier :
+      npm install
+
+2) TESTER L'APPLICATION :
+      npm start
+
+3) FABRIQUER L'INSTALLATEUR (Inno Setup 6.6 ou plus récent requis) :
+      double-clic sur build-installer.bat
+   -> installer\Output\Noteo-Installateur-1.0.0.exe
+
+   Ou à la main :
+      npm run pack                       (crée dist\win-unpacked)
+      puis ouvrir installer\Noteo.iss dans Inno Setup et faire Ctrl+F9
+
+IMPORTANT
+ - Les commandes se lancent DANS ce dossier (celui qui contient package.json).
+ - Le fichier installer\Noteo.iss doit rester dans le dossier "installer".
+ - JS\supabase-config.js contient tes clés Supabase (publiques de type "anon") :
+   ne publie pas ce fichier tel quel sur GitHub (voir Noteo-github.zip).
+ - Pour changer de version : modifier "version" dans package.json.

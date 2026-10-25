@@ -1,0 +1,16 @@
+{
+  "name": "noteo-mobile-apk",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Noteo version téléphone : emballage Android (Capacitor)",
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/share": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.0"
+  }
+}

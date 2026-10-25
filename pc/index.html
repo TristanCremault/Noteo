@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Noteo</title>
+  <script>
+    if (localStorage.getItem('noteo-theme') === 'light') {
+      document.documentElement.classList.add('light-theme');
+    }
+  </script>
+  <link rel="stylesheet" href="CSS/style.css">
+  <link rel="stylesheet" href="CSS/note.css">
+</head>
+<body>
+
+  <div class="app">
+
+    <!-- Barre latérale -->
+    <aside class="sidebar">
+      <div class="profile">👤 Photo de profil</div>
+
+      <button id="btn-locked-exit-side" class="locked-exit-side hidden">← Retour aux notes normales</button>
+
+      <input type="text" class="search-input" placeholder="Rechercher un dossier...">
+
+      <button id="btn-new-folder">+ Nouveau dossier</button>
+
+      <div id="new-folder-form" class="new-folder-form hidden">
+        <input type="text" id="new-folder-input" placeholder="Nom du dossier...">
+        <button id="btn-confirm-folder">OK</button>
+      </div>
+
+      <ul id="pinned-folder-list">
+        <li id="folder-favorites">★ Favoris</li>
+      </ul>
+
+      <ul id="folder-list">
+        <!-- Les dossiers seront ajoutés ici dynamiquement -->
+      </ul>
+
+      <div class="sidebar-bottom">
+        <button id="btn-account">Mon compte</button>
+        <button id="btn-logout">Déconnexion</button>
+      </div>
+    </aside>
+
+    <!-- Contenu principal -->
+    <main class="main">
+      <div class="topbar">
+        <input type="text" id="search-notes" placeholder="Rechercher une note...">
+        <button id="btn-new-note">+ Nouvelle note</button>
+        <select id="sort-select">
+          <option value="date-desc">Trier par : plus récent</option>
+          <option value="date-asc">Trier par : plus ancien</option>
+          <option value="alpha">Trier par : titre (A-Z)</option>
+        </select>
+      </div>
+
+      <div id="locked-banner" class="locked-banner hidden">
+        <span>🔒 Tu es dans le dossier verrouillé</span>
+        <span class="locked-banner-actions">
+          <button id="btn-locked-bg" title="Choisir un fond propre au dossier verrouillé">🎨 Fond</button>
+          <button id="btn-locked-exit">← Retour aux notes normales</button>
+        </span>
+      </div>
+
+      <div class="notes-list" id="notes-list">
+        <!-- Les notes seront affichées ici dynamiquement -->
+        <p class="empty-state">Aucune note pour le moment. Clique sur "Nouvelle note" pour commencer.</p>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Modale de sélection du fond de l'application -->
+  <div id="home-bg-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Fond de l'application</h3>
+        <button id="btn-close-home-bg-modal">✕</button>
+      </div>
+      <div id="home-bg-grid" class="bg-grid">
+        <p class="bg-empty">Chargement...</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-open-home-bg-folder">📂 Importer un fond</button>
+        <button id="btn-refresh-home-bg">🔄 Actualiser</button>
+        <button id="btn-no-home-bg">Aucun fond</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Écran de verrouillage par code PIN à l'entrée -->
+  <div id="app-pin-gate" class="login-gate hidden">
+    <img src="assets/logo.png" class="login-logo-watermark" alt="">
+    <div class="login-card">
+      <h1 class="login-title">🔒 Noteo verrouillé</h1>
+      <p class="login-tagline">Entre ton code PIN pour continuer.</p>
+      <div class="pin-fields">
+        <input type="password" id="app-pin-input" placeholder="Code PIN">
+        <p id="app-pin-error" class="auth-error hidden">Code incorrect.</p>
+      </div>
+      <button id="btn-app-pin-confirm" class="login-btn">Déverrouiller</button>
+      <button id="btn-app-pin-logout" class="login-btn-secondary hidden" type="button" style="margin-top:10px">Déconnexion</button>
+    </div>
+  </div>
+
+  <!-- Écran de connexion / bienvenue (toujours affiché au lancement) -->
+  <div id="login-gate" class="login-gate hidden">
+    <img src="assets/logo.png" class="login-logo-watermark" alt="">
+
+    <div id="login-card" class="login-card">
+      <h1 id="login-title" class="login-title">Bon retour sur Noteo</h1>
+      <p class="login-tagline">Écris librement, on sécurise le reste.</p>
+
+      <div class="login-fields hidden">
+        <input type="text" id="login-username" placeholder="Identifiant">
+        <input type="password" id="login-password" placeholder="Mot de passe">
+        <p id="login-error" class="auth-error hidden">Identifiant ou mot de passe incorrect.</p>
+      </div>
+
+      <button id="btn-login-confirm" class="login-btn">Se connecter</button>
+
+      <button id="btn-login-no-account" class="login-btn-secondary">Pas encore de compte ?</button>
+    </div>
+  </div>
+
+  <!-- Modale de confirmation finale avant réinitialisation complète -->
+  <div id="reset-confirm-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Confirmation finale</h3>
+        <button id="btn-close-reset-confirm-modal">✕</button>
+      </div>
+      <div class="lock-config-body">
+        <p>Pour confirmer la suppression définitive, tape <strong>SUPPRIMER</strong> ci-dessous :</p>
+        <input type="text" id="reset-confirm-input" placeholder="SUPPRIMER">
+        <p id="reset-confirm-error" class="auth-error hidden">Mot incorrect.</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-reset-confirm-cancel">Annuler</button>
+        <button id="btn-reset-confirm-ok">Confirmer la suppression</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale de mise en place du déverrouillage rapide par PIN (compte en ligne) -->
+  <div id="pin-vault-setup-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Déverrouillage rapide par PIN</h3>
+        <button id="btn-close-pin-vault-modal">✕</button>
+      </div>
+      <div class="lock-config-body">
+        <p>Retape ton code PIN pour l'utiliser aussi à la prochaine connexion, sans redonner ton email et ton mot de passe.</p>
+        <input type="password" id="pin-vault-input" placeholder="Code PIN">
+        <p id="pin-vault-error" class="auth-error hidden">Code incorrect.</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-pin-vault-skip">Non merci</button>
+        <button id="btn-pin-vault-confirm">Activer</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="JS/supabase-config.js"></script>
+  <script src="JS/sync.js"></script>
+  <script src="JS/accueil.js"></script>
+</body>
+</html>

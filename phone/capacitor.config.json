@@ -1,0 +1,7 @@
+{
+  "appId": "com.tomwi.noteo.mobile",
+  "appName": "Noteo",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "android": { "backgroundColor": "#07070d" }
+}

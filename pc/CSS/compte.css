@@ -1,0 +1,360 @@
+.account-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: relative;
+  border: 3px solid;
+  border-image: linear-gradient(135deg, #05070d, #1b3a6e, #05070d 55%, #0d1f42) 1;
+  box-shadow:
+    0 0 0 1px rgba(75, 94, 252, 0.25),
+    inset 0 0 30px rgba(15, 30, 70, 0.55);
+}
+
+.account-app::before,
+.account-app::after {
+  content: "";
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 2px solid #5b7bff;
+  pointer-events: none;
+  opacity: 0.9;
+  z-index: 5;
+}
+
+.account-app::before {
+  top: -3px;
+  left: -3px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.account-app::after {
+  bottom: -3px;
+  right: -3px;
+  border-left: none;
+  border-top: none;
+}
+
+.account-topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.account-topbar h2 {
+  font-size: 18px;
+}
+
+#btn-account-back {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-panel-alt);
+  color: var(--text-main);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+#btn-account-back:hover {
+  background: var(--bg-panel-alt2);
+}
+
+.account-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px;
+}
+
+.account-section-title {
+  font-size: 16px;
+  margin-bottom: 20px;
+}
+
+.account-welcome {
+  font-size: 20px;
+  margin-bottom: 20px;
+}
+
+.account-header {
+  max-width: 480px;
+  margin: 0 auto 32px;
+  text-align: center;
+}
+
+.account-photo-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-photo-preview,
+.account-photo-placeholder {
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  object-fit: cover;
+}
+
+.account-photo-preview.hidden {
+  display: none;
+}
+
+.account-photo-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 52px;
+  background: var(--bg-panel-alt);
+}
+
+.account-photo-placeholder.hidden {
+  display: none;
+}
+
+#account-photo-name {
+  font-size: 17px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.account-option-btn {
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-panel);
+  color: var(--text-main);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.account-option-btn:hover {
+  background: var(--bg-panel-alt);
+  border-color: var(--accent);
+}
+
+.account-fields-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.account-field-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.account-field-box label {
+  font-size: 12px;
+  color: var(--text-muted2);
+}
+
+.account-field-box input,
+.account-field-box select {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-sidebar);
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.account-field-box input:focus,
+.account-field-box select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.account-field-box-button {
+  justify-content: center;
+}
+
+.account-divider {
+  border: none;
+  border-top: 1px solid var(--border-soft);
+  margin: 8px 0 28px;
+}
+
+.account-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  max-width: 900px;
+}
+
+.account-type-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+}
+
+.account-type-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-panel-alt);
+}
+
+.account-type-card.selected {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(75,94,252,0.15), rgba(139,63,252,0.08));
+}
+
+.account-type-icon {
+  font-size: 28px;
+  margin-bottom: 10px;
+}
+
+.account-type-card h4 {
+  margin-bottom: 8px;
+  font-size: 15px;
+}
+
+.account-type-card p {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.current-account-type {
+  margin-top: 24px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-muted2);
+}
+
+.danger-btn {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.danger-btn:hover {
+  background: rgba(224, 85, 95, 0.12);
+  border-color: var(--danger);
+}
+
+.field-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+  margin-top: 6px;
+}
+
+.account-danger-zone {
+  display: flex;
+  gap: 12px;
+  max-width: 500px;
+}
+
+.account-danger-zone .account-option-btn {
+  flex: 1;
+}
+
+.account-type-modal-note {
+  font-size: 12px;
+  color: #f5a623;
+  background: rgba(245, 166, 35, 0.1);
+  border: 1px solid rgba(245, 166, 35, 0.3);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.account-type-modal-note.hidden {
+  display: none;
+}
+
+.wizard-step-label {
+  font-size: 12px;
+  color: var(--text-muted2);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.wizard-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wizard-step.hidden {
+  display: none;
+}
+
+.wizard-step .account-option-btn {
+  margin-top: 6px;
+}
+
+.password-tips {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-panel-alt);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.password-tips li::before {
+  content: "○ ";
+  color: var(--text-faint);
+}
+
+.password-tips li.tip-ok {
+  color: var(--text-main);
+}
+
+.password-tips li.tip-ok::before {
+  content: "✓ ";
+  color: #4caf7d;
+}
+
+/* Recadrage de la photo de profil */
+.crop-body {
+  align-items: center;
+}
+
+.crop-canvas {
+  width: 300px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  background: var(--bg-panel);
+  cursor: grab;
+  touch-action: none;
+}
+
+.crop-canvas:active {
+  cursor: grabbing;
+}
+
+.crop-zoom {
+  width: 100%;
+  max-width: 300px;
+  accent-color: var(--accent);
+}
+
+
+.account-btn-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-btn-pair .account-option-btn {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}

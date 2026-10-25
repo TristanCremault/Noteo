@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Noteo — Compte</title>
+  <script>
+    if (localStorage.getItem('noteo-theme') === 'light') {
+      document.documentElement.classList.add('light-theme');
+    }
+  </script>
+  <link rel="stylesheet" href="CSS/style.css">
+  <link rel="stylesheet" href="CSS/note.css">
+  <link rel="stylesheet" href="CSS/compte.css">
+</head>
+<body>
+
+  <div class="account-app">
+
+    <div class="account-topbar">
+      <button id="btn-account-back">← Retour</button>
+      <h2>Espace compte</h2>
+    </div>
+
+    <div class="account-body">
+
+      <div class="account-header">
+        <h2 class="account-welcome">Bienvenue dans votre espace personnel<span id="account-username-display"></span></h2>
+
+        <div class="account-photo-block">
+          <img id="account-photo-preview" class="account-photo-preview hidden" src="" alt="Photo de profil">
+          <div id="account-photo-placeholder" class="account-photo-placeholder">👤</div>
+          <p id="account-photo-name">Photo de profil</p>
+          <button id="btn-import-photo" class="account-option-btn">📷 Importer votre photo de profil</button>
+        </div>
+      </div>
+
+      <div class="account-fields-row">
+
+        <div class="account-field-box">
+          <label>Nom d'utilisateur</label>
+          <input type="text" id="account-username" placeholder="Nom d'utilisateur">
+          <label>Nom d'affichage</label>
+          <input type="text" id="account-display-name" placeholder="Nom d'affichage">
+        </div>
+
+        <div class="account-field-box">
+          <label>Langue</label>
+          <select id="account-language">
+            <option value="fr">Français</option>
+            <option value="en">Anglais</option>
+            <option value="es">Espagnol</option>
+            <option value="de">Allemand</option>
+            <option value="it">Italien</option>
+            <option value="pt">Portugais</option>
+          </select>
+        </div>
+
+        <div class="account-field-box">
+          <label>Thème</label>
+          <select id="account-theme">
+            <option value="dark">Thème sombre</option>
+            <option value="light">Thème clair</option>
+          </select>
+        </div>
+
+        <div class="account-field-box account-field-box-button">
+          <button id="btn-account-background" class="account-option-btn">🎨 Fond de l'application</button>
+        </div>
+
+        <div class="account-field-box account-field-box-button">
+          <button id="btn-change-locked-password" class="account-option-btn">🔑 Changer le mot de passe du dossier verrouillé</button>
+          <p class="field-hint">(par défaut : 000000)</p>
+        </div>
+
+        <div id="account-password-box" class="account-field-box account-field-box-button hidden">
+          <button id="btn-change-account-password" class="account-option-btn">🔑 Changer le mot de passe du compte</button>
+        </div>
+
+        <div class="account-field-box">
+          <label>Sécurité de l'application</label>
+          <label class="checkbox-line">
+            <input type="checkbox" id="account-pin-enabled">
+            Demander un code PIN à l'ouverture de Noteo
+          </label>
+          <div class="account-btn-pair">
+            <button id="btn-set-app-pin" class="account-option-btn">🔑 Définir le code PIN</button>
+            <button id="btn-phone-version" class="account-option-btn" type="button" title="Ouvrir la version téléphone de Noteo (clic droit : changer l'adresse)">📱 Version téléphone</button>
+          </div>
+        </div>
+
+
+      </div>
+
+      <hr class="account-divider">
+
+      <h3 class="account-section-title">Choisissez votre système de compte</h3>
+
+      <div class="account-type-grid">
+
+        <div class="account-type-card" data-type="none">
+          <div class="account-type-icon">🔓</div>
+          <h4>Aucun compte</h4>
+          <p>Utilisez Noteo sans créer de compte. Vos notes restent uniquement sur votre appareil et aucune donnée de connexion n'est nécessaire. En cas de désinstallation, vos notes peuvent être perdues.</p>
+        </div>
+
+        <div class="account-type-card" data-type="local">
+          <div class="account-type-icon">💻</div>
+          <h4>Compte local</h4>
+          <p>Créez un compte avec un nom d'utilisateur et un mot de passe. Vos notes restent stockées sur votre appareil et sont accessibles uniquement depuis celui-ci.</p>
+        </div>
+
+        <div class="account-type-card" data-type="online">
+          <div class="account-type-icon">☁️</div>
+          <h4>Compte en ligne</h4>
+          <p>Créez un compte avec un nom d'utilisateur et un mot de passe pour accéder à votre espace personnel depuis n'importe quel appareil ou navigateur. Vos notes sont synchronisées en ligne.</p>
+        </div>
+
+      </div>
+
+      <p id="current-account-type" class="current-account-type"></p>
+
+      <div class="account-danger-zone">
+        <button id="btn-delete-account" class="account-option-btn danger-btn">🗑️ Supprimer le compte</button>
+        <button id="btn-reset-account" class="account-option-btn danger-btn">♻️ Réinitialiser le compte</button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Modale de détail / confirmation du type de compte -->
+  <div id="account-type-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="account-type-modal-title">Type de compte</h3>
+        <button id="btn-close-account-type-modal">✕</button>
+      </div>
+      <div class="lock-config-body">
+        <p id="account-type-modal-desc"></p>
+        <p id="account-type-modal-note" class="account-type-modal-note hidden"></p>
+
+        <div id="local-account-form" class="hidden">
+          <label>Nom d'utilisateur</label>
+          <input type="text" id="local-account-username" placeholder="Nom d'utilisateur">
+          <label>Mot de passe</label>
+          <input type="password" id="local-account-password" placeholder="Mot de passe">
+          <label>Confirmer le mot de passe</label>
+          <input type="password" id="local-account-password-confirm" placeholder="Confirmer le mot de passe">
+          <p id="local-account-error" class="auth-error hidden"></p>
+        </div>
+
+        <div id="online-account-form" class="hidden">
+          <p class="wizard-step-label" id="online-step-label">Étape 1 sur 4 — Adresse email</p>
+
+          <div id="online-step-1" class="wizard-step">
+            <label>Adresse email</label>
+            <input type="email" id="online-username" placeholder="ton@email.com">
+            <button type="button" id="btn-online-step1-next" class="account-option-btn">Suivant</button>
+            <button type="button" id="btn-online-have-account" class="account-option-btn">J'ai déjà un compte en ligne</button>
+          </div>
+
+          <div id="online-step-2" class="wizard-step hidden">
+            <label>Mot de passe</label>
+            <input type="password" id="online-password" placeholder="Mot de passe">
+            <ul class="password-tips">
+              <li id="tip-length">Au moins 8 caractères</li>
+              <li id="tip-upper">Une majuscule</li>
+              <li id="tip-number">Un chiffre</li>
+              <li id="tip-special">Un caractère spécial</li>
+            </ul>
+            <label>Confirmer le mot de passe</label>
+            <input type="password" id="online-password-confirm" placeholder="Confirmer le mot de passe">
+            <button type="button" id="btn-online-step2-next" class="account-option-btn">Suivant</button>
+          </div>
+
+          <div id="online-step-3" class="wizard-step hidden">
+            <label>Nom d'affichage</label>
+            <input type="text" id="online-display-name" placeholder="Nom d'affichage">
+            <button type="button" id="btn-online-step3-next" class="account-option-btn">Suivant</button>
+          </div>
+
+          <div id="online-step-4" class="wizard-step hidden">
+            <label>Langue</label>
+            <select id="online-language">
+              <option value="fr">Français</option>
+              <option value="en">Anglais</option>
+              <option value="es">Espagnol</option>
+              <option value="de">Allemand</option>
+              <option value="it">Italien</option>
+              <option value="pt">Portugais</option>
+            </select>
+            <button type="button" id="btn-online-create" class="account-option-btn">Créer le compte en ligne</button>
+          </div>
+
+          <div id="online-login-block" class="wizard-step hidden">
+            <label>Adresse email</label>
+            <input type="email" id="online-login-email" placeholder="ton@email.com">
+            <label>Mot de passe</label>
+            <input type="password" id="online-login-password" placeholder="Mot de passe">
+            <button type="button" id="btn-online-login" class="account-option-btn">Me connecter</button>
+            <button type="button" id="btn-online-login-back" class="account-option-btn">← Créer un nouveau compte à la place</button>
+          </div>
+
+          <p id="online-account-error" class="auth-error hidden"></p>
+        </div>
+      </div>
+      <div class="modal-footer" id="account-type-modal-footer">
+        <button id="btn-confirm-account-type">Passer en ce mode</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale de changement du mot de passe du compte (local/en ligne) -->
+  <div id="account-password-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Changer le mot de passe du compte</h3>
+        <button id="btn-close-account-password-modal">✕</button>
+      </div>
+      <div class="lock-config-body">
+        <label>Mot de passe actuel</label>
+        <input type="password" id="account-password-old" placeholder="Mot de passe actuel">
+        <label>Nouveau mot de passe</label>
+        <input type="password" id="account-password-new" placeholder="Nouveau mot de passe">
+        <label>Confirmer le nouveau mot de passe</label>
+        <input type="password" id="account-password-confirm" placeholder="Confirmer le nouveau mot de passe">
+        <p id="account-password-error" class="auth-error hidden"></p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-save-account-password">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale de changement du code du dossier verrouillé -->
+  <div id="locked-password-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Changer le mot de passe du dossier verrouillé</h3>
+        <button id="btn-close-locked-password-modal">✕</button>
+      </div>
+      <div class="lock-config-body">
+        <label>Ancien code</label>
+        <input type="password" id="locked-password-old" placeholder="Ancien code (par défaut : 000000)">
+        <label>Nouveau code</label>
+        <input type="password" id="locked-password-new" placeholder="Nouveau code">
+        <label>Confirmer le code</label>
+        <input type="password" id="locked-password-confirm" placeholder="Confirmer le code">
+        <p id="locked-password-error" class="auth-error hidden"></p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-save-locked-password">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale de définition du code PIN d'entrée -->
+  <div id="app-pin-setup-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Définir le code PIN d'entrée</h3>
+        <button id="btn-close-app-pin-setup-modal">✕</button>
+      </div>
+      <div class="lock-config-body">
+        <label>Nouveau code PIN</label>
+        <input type="password" id="app-pin-new" placeholder="Code PIN">
+        <label>Confirmer le code</label>
+        <input type="password" id="app-pin-confirm-input" placeholder="Confirmer le code">
+        <p id="app-pin-setup-error" class="auth-error hidden"></p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-save-app-pin">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale de vérification du code PIN actuel (désactivation ou modification) -->
+  <div id="pin-verify-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="pin-verify-title">Confirme ton code PIN actuel</h3>
+        <button id="btn-close-pin-verify-modal">✕</button>
+      </div>
+      <div class="lock-config-body">
+        <input type="password" id="pin-verify-input" placeholder="Code PIN actuel">
+        <p id="pin-verify-error" class="auth-error hidden">Code incorrect.</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-pin-verify-cancel">Annuler</button>
+        <button id="btn-pin-verify-confirm">Confirmer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale de recadrage de la photo de profil -->
+  <div id="photo-crop-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Recadrer la photo de profil</h3>
+        <button id="btn-close-photo-crop">✕</button>
+      </div>
+      <div class="lock-config-body crop-body">
+        <canvas id="crop-canvas" class="crop-canvas" width="300" height="300"></canvas>
+        <p class="field-hint">Glisse l'image pour la déplacer, utilise le curseur ou la molette pour zoomer.</p>
+        <input type="range" id="crop-zoom" class="crop-zoom" min="1" max="4" step="0.01" value="1">
+      </div>
+      <div class="modal-footer">
+        <button id="btn-crop-cancel">Annuler</button>
+        <button id="btn-crop-save">Enregistrer la photo</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="JS/supabase-config.js"></script>
+  <script src="JS/sync.js"></script>
+  <script src="JS/compte.js"></script>
+</body>
+</html>

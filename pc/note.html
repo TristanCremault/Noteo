@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Noteo — Note</title>
+  <script>
+    if (localStorage.getItem('noteo-theme') === 'light') {
+      document.documentElement.classList.add('light-theme');
+    }
+  </script>
+  <link rel="stylesheet" href="CSS/style.css">
+  <link rel="stylesheet" href="CSS/note.css">
+</head>
+<body>
+
+  <div class="note-app">
+
+    <!-- Barre du haut -->
+    <div class="note-topbar">
+      <div class="topbar-left">
+        <button id="btn-back">← Retour</button>
+      </div>
+      <div class="topbar-right">
+        <input type="text" id="note-title" placeholder="Nom de la note...">
+        <button id="btn-toggle-sidebar" class="topbar-tool" title="Masquer ou afficher le panneau de gauche (Ctrl+Maj+B)">◧ Masquer le panneau</button>
+        <button id="btn-fullscreen" class="topbar-tool" title="Plein écran (F11, Échap pour quitter)">⛶ Plein écran</button>
+        <button id="btn-save">Enregistrer</button>
+      </div>
+    </div>
+
+    <div class="note-body">
+
+      <!-- Sidebar d'actions -->
+      <aside class="note-sidebar">
+
+        <button id="btn-background" class="note-action">🎨 Fond</button>
+
+        <button id="btn-favorite" class="note-action">☆ Favoris</button>
+
+        <div class="note-section">
+          <p class="section-title">Dossier</p>
+          <select id="note-folder"></select>
+          <div id="new-folder-block-note" class="new-folder-block hidden">
+            <select id="new-folder-parent-note" class="new-folder-parent-select"></select>
+            <div class="new-folder-form">
+              <input type="text" id="new-folder-input-note" placeholder="Nom du dossier...">
+              <button id="btn-confirm-folder-note">OK</button>
+            </div>
+          </div>
+          <button id="btn-new-folder-note" class="note-action">+ Nouveau dossier</button>
+        </div>
+
+        <button id="btn-move-locked" class="note-action">🔒 Déplacer vers le dossier verrouillé</button>
+
+        <button id="btn-move-space" class="note-action">📱 Déplacer vers la version téléphone</button>
+
+        <button id="btn-hide-content" class="note-action">Cacher le contenu</button>
+
+        <button id="btn-share" class="note-action">Partager la note</button>
+
+        <button id="btn-import-pdf" class="note-action">📥 Importer un PDF</button>
+
+        <button id="btn-lock" class="note-action">🔒 Verrouiller</button>
+
+        <button id="btn-unlock-edit" class="note-action hidden">🔓 Déverrouiller pour modifier</button>
+
+        <button id="btn-spellcheck" class="note-action">Correcteur : activé</button>
+
+        <button id="btn-emoji" class="note-action">😀 Emoji</button>
+
+        <div class="note-info">
+          <p id="char-count">0 caractère</p>
+          <p id="created-at">Créée le : —</p>
+          <p id="updated-at">Modifiée le : —</p>
+        </div>
+
+      </aside>
+
+      <!-- Contenu -->
+      <main class="note-content">
+
+        <div class="editor-toolbar">
+          <button id="btn-undo" title="Annuler">↶ Annuler</button>
+          <button id="btn-redo" title="Rétablir">↷ Rétablir</button>
+          <span class="toolbar-sep"></span>
+          <button id="btn-copy" title="Copier">Copier</button>
+          <button id="btn-paste" title="Coller">Coller</button>
+          <span class="toolbar-sep"></span>
+          <button id="btn-bold" title="Gras"><b>G</b></button>
+          <button id="btn-italic" title="Italique"><i>I</i></button>
+          <button id="btn-underline" title="Souligné"><u>S</u></button>
+          <div class="toolbar-color-wrapper">
+            <button id="btn-highlight" title="Surligner">🖍</button>
+            <div id="highlight-palette" class="color-palette hidden">
+              <button class="color-swatch none" data-color="transparent" title="Aucun">🚫</button>
+              <button class="color-swatch" data-color="#FFFF00" style="background:#FFFF00" title="Jaune"></button>
+              <button class="color-swatch" data-color="#00FF00" style="background:#00FF00" title="Vert"></button>
+              <button class="color-swatch" data-color="#00FFFF" style="background:#00FFFF" title="Turquoise"></button>
+              <button class="color-swatch" data-color="#FF00FF" style="background:#FF00FF" title="Rose"></button>
+              <button class="color-swatch" data-color="#0000FF" style="background:#0000FF" title="Bleu"></button>
+              <button class="color-swatch" data-color="#FF0000" style="background:#FF0000" title="Rouge"></button>
+              <button class="color-swatch" data-color="#000080" style="background:#000080" title="Bleu foncé"></button>
+              <button class="color-swatch" data-color="#008080" style="background:#008080" title="Sarcelle"></button>
+              <button class="color-swatch" data-color="#008000" style="background:#008000" title="Vert foncé"></button>
+              <button class="color-swatch" data-color="#800080" style="background:#800080" title="Violet"></button>
+              <button class="color-swatch" data-color="#800000" style="background:#800000" title="Brique"></button>
+              <button class="color-swatch" data-color="#808000" style="background:#808000" title="Jaune foncé"></button>
+              <button class="color-swatch" data-color="#808080" style="background:#808080" title="Gris"></button>
+              <button class="color-swatch" data-color="#C0C0C0" style="background:#C0C0C0" title="Gris clair"></button>
+              <button class="color-swatch" data-color="#000000" style="background:#000000" title="Noir"></button>
+              <button class="color-swatch" data-color="#FFFFFF" style="background:#FFFFFF" title="Blanc"></button>
+            </div>
+          </div>
+          <div class="toolbar-color-wrapper">
+            <button id="btn-font-color" title="Couleur du texte">🎨</button>
+            <div id="font-color-palette" class="color-palette hidden">
+              <button class="color-swatch none" data-reset="true" title="Par défaut">↺</button>
+              <button class="color-swatch" data-color="#FFFF00" style="background:#FFFF00" title="Jaune"></button>
+              <button class="color-swatch" data-color="#00FF00" style="background:#00FF00" title="Vert"></button>
+              <button class="color-swatch" data-color="#00FFFF" style="background:#00FFFF" title="Turquoise"></button>
+              <button class="color-swatch" data-color="#FF00FF" style="background:#FF00FF" title="Rose"></button>
+              <button class="color-swatch" data-color="#0000FF" style="background:#0000FF" title="Bleu"></button>
+              <button class="color-swatch" data-color="#FF0000" style="background:#FF0000" title="Rouge"></button>
+              <button class="color-swatch" data-color="#000080" style="background:#000080" title="Bleu foncé"></button>
+              <button class="color-swatch" data-color="#008080" style="background:#008080" title="Sarcelle"></button>
+              <button class="color-swatch" data-color="#008000" style="background:#008000" title="Vert foncé"></button>
+              <button class="color-swatch" data-color="#800080" style="background:#800080" title="Violet"></button>
+              <button class="color-swatch" data-color="#800000" style="background:#800000" title="Brique"></button>
+              <button class="color-swatch" data-color="#808000" style="background:#808000" title="Jaune foncé"></button>
+              <button class="color-swatch" data-color="#808080" style="background:#808080" title="Gris"></button>
+              <button class="color-swatch" data-color="#C0C0C0" style="background:#C0C0C0" title="Gris clair"></button>
+              <button class="color-swatch" data-color="#000000" style="background:#000000" title="Noir"></button>
+              <button class="color-swatch" data-color="#FFFFFF" style="background:#FFFFFF" title="Blanc"></button>
+            </div>
+          </div>
+          <button id="btn-superscript" title="Exposant">x²</button>
+          <button id="btn-subscript" title="Indice">x₂</button>
+          <span class="toolbar-sep"></span>
+          <button id="btn-align-left" title="Aligner à gauche">⯇≡</button>
+          <button id="btn-align-center" title="Centrer">≡</button>
+          <button id="btn-align-right" title="Aligner à droite">≡⯈</button>
+          <span class="toolbar-sep"></span>
+          <select id="font-select" title="Police">
+            <option value="Segoe UI">Segoe UI</option>
+            <option value="Arial">Arial</option>
+            <option value="Arial Black">Arial Black</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Courier New">Courier New</option>
+            <option value="Consolas">Consolas</option>
+            <option value="Verdana">Verdana</option>
+            <option value="Tahoma">Tahoma</option>
+            <option value="Trebuchet MS">Trebuchet MS</option>
+            <option value="Calibri">Calibri</option>
+            <option value="Cambria">Cambria</option>
+            <option value="Lucida Console">Lucida Console</option>
+            <option value="Comic Sans MS">Comic Sans MS</option>
+            <option value="Impact">Impact</option>
+          </select>
+          <input type="text" id="size-select" class="size-input" list="size-list" inputmode="numeric" autocomplete="off" value="14" title="Taille de la police : tape un nombre (1 à 400) puis Entrée, ou choisis dans la liste">
+          <datalist id="size-list">
+            <option value="8"></option>
+            <option value="9"></option>
+            <option value="10"></option>
+            <option value="11"></option>
+            <option value="12"></option>
+            <option value="14"></option>
+            <option value="16"></option>
+            <option value="18"></option>
+            <option value="20"></option>
+            <option value="22"></option>
+            <option value="24"></option>
+            <option value="26"></option>
+            <option value="28"></option>
+            <option value="32"></option>
+            <option value="36"></option>
+            <option value="40"></option>
+            <option value="48"></option>
+            <option value="56"></option>
+            <option value="64"></option>
+            <option value="72"></option>
+            <option value="96"></option>
+          </datalist>
+          <span class="toolbar-sep"></span>
+          <button id="btn-table" title="Insérer un tableau">Tableau</button>
+          <button id="btn-link" title="Insérer un lien">🔗 Lien</button>
+          <button id="btn-image" title="Insérer une image">🖼️ Image</button>
+          <input type="file" id="image-file-input" accept="image/*" style="display:none;">
+          <span class="toolbar-sep"></span>
+          <div class="toolbar-color-wrapper">
+            <button id="btn-search-note" title="Rechercher dans la note">🔍</button>
+            <div id="search-note-bar" class="search-note-bar hidden">
+              <input type="text" id="search-note-input" placeholder="Rechercher...">
+              <button id="btn-search-prev" title="Précédent">▲</button>
+              <button id="btn-search-next" title="Suivant">▼</button>
+              <button id="btn-search-close" title="Fermer">✕</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="note-content" class="note-editor" contenteditable="true" spellcheck="true" data-placeholder="Contenu de la note..."></div>
+      </main>
+
+    </div>
+
+  </div>
+
+  <!-- Modale de sélection du fond -->
+  <div id="bg-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Choisir un fond</h3>
+        <button id="btn-close-bg-modal">✕</button>
+      </div>
+      <div id="bg-grid" class="bg-grid">
+        <p class="bg-empty">Chargement...</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-open-bg-folder">📂 Importer un fond (ouvrir le dossier)</button>
+        <button id="btn-refresh-bg">🔄 Actualiser</button>
+        <button id="btn-no-bg">Aucun fond</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale de configuration du verrou -->
+  <div id="lock-config-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Verrouiller la note</h3>
+        <button id="btn-close-lock-modal">✕</button>
+      </div>
+      <div class="lock-config-body">
+        <label>Mot de passe</label>
+        <input type="password" id="lock-password" placeholder="Mot de passe">
+        <label>Confirmer le mot de passe</label>
+        <input type="password" id="lock-password-confirm" placeholder="Confirmer le mot de passe">
+        <p id="lock-error" class="auth-error hidden"></p>
+        <label class="checkbox-line">
+          <input type="checkbox" id="lock-require-open" checked>
+          Demander le mot de passe pour ouvrir la note
+        </label>
+        <label class="checkbox-line">
+          <input type="checkbox" id="lock-require-edit">
+          Demander le mot de passe pour modifier la note
+        </label>
+        <p id="lock-edit-only-warning" class="lock-warning hidden">
+          ⚠️ Sans "Demander le mot de passe pour ouvrir", le contenu de cette note reste
+          lisible en clair sur le disque (il doit pouvoir s'afficher sans mot de passe).
+          Seul l'accès en modification est protégé, pas le contenu lui-même.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-remove-lock" class="hidden">Retirer le verrou</button>
+        <button id="btn-save-lock">Verrouiller</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale de saisie du mot de passe (ouverture / déverrouillage édition) -->
+  <div id="auth-modal" class="modal hidden">
+    <div class="modal-content auth-content">
+      <div class="modal-header">
+        <h3 id="auth-title">Mot de passe requis</h3>
+      </div>
+      <div class="lock-config-body">
+        <input type="password" id="auth-password" placeholder="Mot de passe">
+        <p id="auth-error" class="auth-error hidden">Mot de passe incorrect.</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-auth-cancel">Annuler</button>
+        <button id="btn-auth-confirm">Déverrouiller</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale de sélection d'emoji -->
+  <div id="emoji-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Insérer un emoji</h3>
+        <button id="btn-close-emoji-modal">✕</button>
+      </div>
+      <div id="emoji-grid" class="emoji-grid"></div>
+    </div>
+  </div>
+
+  <!-- Modale de dimensions du tableau -->
+  <div id="table-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Insérer un tableau</h3>
+        <button id="btn-close-table-modal">✕</button>
+      </div>
+      <div class="lock-config-body">
+        <label>Nombre de lignes</label>
+        <input type="number" id="table-rows" min="1" max="20" value="2">
+        <label>Nombre de colonnes</label>
+        <input type="number" id="table-cols" min="1" max="20" value="2">
+      </div>
+      <div class="modal-footer">
+        <button id="btn-insert-table">Insérer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale d'insertion de lien -->
+  <div id="link-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Insérer un lien</h3>
+        <button id="btn-close-link-modal">✕</button>
+      </div>
+      <div class="lock-config-body">
+        <label>Texte à afficher</label>
+        <input type="text" id="link-text" placeholder="Nom du lien">
+        <label>Adresse (URL)</label>
+        <input type="text" id="link-url" placeholder="https://...">
+      </div>
+      <div class="modal-footer">
+        <button id="btn-insert-link">Insérer</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="JS/supabase-config.js"></script>
+  <script src="JS/sync.js"></script>
+  <script src="JS/note.js"></script>
+</body>
+</html>
