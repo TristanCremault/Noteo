@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noteo</title>
+<meta name="description" content="Noteo : ton bloc-notes sur ordinateur et sur téléphone, avec un compte en ligne chiffré.">
+<meta name="theme-color" content="#08080e">
+<link rel="icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#08080e; --panel:#14141c; --line:#262633; --fg:#ecebf2; --muted:#9a9aa8;
+  --accent:#4b5efc; --accent2:#8b3ffc; --star:#f5c451;
+  --grad:linear-gradient(135deg,var(--accent),var(--accent2));
+  --maxw:1120px;
+}
+*{box-sizing:border-box;margin:0}
+img{height:auto;max-width:100%}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--fg);font-family:'Outfit',system-ui,sans-serif;line-height:1.55;font-size:18px;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+
+/* bandeau */
+header.top{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;font-weight:600;font-size:24px;letter-spacing:-.01em}
+.brand img{width:38px;height:38px;border-radius:10px}
+.brand b{color:var(--accent2);font-weight:600}
+nav.links{display:flex;gap:22px;font-size:16px;color:var(--muted)}
+nav.links a{text-decoration:none}
+nav.links a:hover{color:var(--fg)}
+
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:48px;align-items:center;padding:56px 0 96px}
+h1{font-size:clamp(40px,6vw,72px);line-height:1.02;letter-spacing:-.03em;font-weight:600;max-width:11ch}
+.lead{color:var(--muted);font-size:20px;max-width:34ch;margin-top:22px}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:34px}
+.btn{display:inline-flex;justify-content:center;align-items:center;gap:10px;padding:14px 22px;border-radius:14px;font:inherit;font-weight:500;text-decoration:none;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+.btn:hover{border-color:#3a3a4d}
+.btn.main{background:var(--grad);border-color:transparent;color:#fff;box-shadow:0 10px 30px -10px rgba(91,80,252,.7)}
+.btn.main:hover{filter:brightness(1.08)}
+.sub{margin-top:14px;font-size:15px;color:var(--muted)}
+
+/* mise en scène : PC + téléphone reliés */
+.stage{position:relative;padding:0 0 90px}
+.pc{width:100%;border-radius:14px;border:1px solid var(--line);display:block;box-shadow:0 40px 80px -30px rgba(0,0,0,.8)}
+.phone{position:absolute;right:-6px;bottom:0;width:31%;border-radius:22px;border:1px solid var(--line);box-shadow:0 30px 60px -20px rgba(0,0,0,.9);background:var(--bg)}
+.thread{position:absolute;left:8%;bottom:30px;width:56%;height:80px;pointer-events:none}
+.thread path{stroke:url(#g);stroke-width:2;fill:none;stroke-dasharray:6 7;stroke-linecap:round}
+.tag{position:absolute;left:12%;bottom:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:14px;color:var(--fg);white-space:nowrap}
+.tag i{font-style:normal;color:var(--star)}
+
+/* sections */
+section{padding:84px 0;border-top:1px solid var(--line)}
+h2{font-size:clamp(30px,4vw,46px);letter-spacing:-.025em;line-height:1.08;font-weight:600;max-width:20ch}
+.intro{color:var(--muted);max-width:52ch;margin-top:16px}
+
+/* deux espaces */
+.spaces{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:44px}
+.space{border:1px solid var(--line);border-radius:20px;padding:30px;background:var(--panel)}
+.space.phone-s{background:linear-gradient(160deg,rgba(75,94,252,.14),rgba(139,63,252,.10) 60%,var(--panel))}
+.space h3{font-size:26px;font-weight:600;letter-spacing:-.015em}
+.space p{color:var(--muted);margin-top:10px;max-width:40ch}
+.space ul{margin:18px 0 0;padding:0;list-style:none;display:grid;gap:8px;font-size:16px}
+.space li::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--grad);margin-right:12px}
+.move{margin-top:22px;border:1px dashed #3a3a4d;border-radius:16px;padding:20px 24px;color:var(--muted);font-size:16px;max-width:none}
+.move b{color:var(--fg);font-weight:500}
+
+/* téléchargements */
+.dl{margin-top:40px;border-top:1px solid var(--line)}
+.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) 250px;gap:24px;align-items:center;padding:26px 0;border-bottom:1px solid var(--line)}
+.row h3{font-size:24px;font-weight:600;letter-spacing:-.015em}
+.row p{color:var(--muted);font-size:16px}
+.row.rec h3::after{content:"pour toi";margin-left:12px;font-size:13px;font-weight:500;color:var(--star);border:1px solid rgba(245,196,81,.4);padding:2px 10px;border-radius:999px;vertical-align:middle}
+details{margin-top:28px;color:var(--muted);font-size:16px;max-width:64ch}
+summary{cursor:pointer;color:var(--fg);font-weight:500}
+details ol{margin:12px 0 0 20px;display:grid;gap:6px}
+
+footer{padding:40px 0 60px;border-top:1px solid var(--line);color:var(--muted);font-size:15px;display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
+
+@media (max-width:860px){
+  .hero{grid-template-columns:1fr;padding:28px 0 64px;gap:40px}
+  h1{max-width:14ch}
+  .spaces{grid-template-columns:1fr}
+  .row{grid-template-columns:1fr;gap:12px}
+  section{padding:60px 0}
+  nav.links{display:none}
+}
+@media (prefers-reduced-motion:no-preference){
+  .thread path{animation:flow 1.6s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-26}}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./"><img src="img/logo.png" alt=""><span>Note<b>o</b></span></a>
+    <nav class="links"><a href="#espaces">Deux espaces</a><a href="#telecharger">Télécharger</a></nav>
+  </header>
+
+  <div class="hero">
+    <div>
+      <h1>Ton bloc-notes, partout avec toi.</h1>
+      <p class="lead">Écris sur ton ordinateur, relis sur ton téléphone. Tes notes sont chiffrées avant de quitter ton appareil.</p>
+      <div class="cta">
+        <a class="btn main" id="cta-main" href="app/">Ouvrir Noteo sur le web</a>
+        <a class="btn" href="#telecharger">Tous les téléchargements</a>
+      </div>
+      <p class="sub" id="cta-sub">Gratuit. Fonctionne aussi sans connexion.</p>
+    </div>
+    <div class="stage">
+      <img class="pc" src="img/pc.png" alt="Noteo sur ordinateur : dossiers à gauche, liste de notes à droite" width="1920" height="1200">
+      <svg class="thread" viewBox="0 0 400 80" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#4b5efc"/><stop offset="1" stop-color="#8b3ffc"/></linearGradient></defs>
+        <path d="M0 10 C120 10 200 70 400 60" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <span class="tag"><i>★</i> Déplacer vers la version téléphone</span>
+      <img class="phone" src="img/phone.png" alt="Noteo sur téléphone : liste de notes" width="780" height="1600">
+    </div>
+  </div>
+</div>
+
+<section id="espaces">
+  <div class="wrap">
+    <h2>Deux espaces, un seul compte.</h2>
+    <p class="intro">Les notes du PC et celles du téléphone restent séparées. Un même compte en ligne les relie, et tu choisis ce qui passe de l'un à l'autre.</p>
+    <div class="spaces">
+      <div class="space">
+        <h3>Sur ordinateur</h3>
+        <p>Pour écrire longuement, classer en dossiers et exporter.</p>
+        <ul><li>Dossiers et sous-dossiers</li><li>Export PDF et ODT</li><li>Dossier verrouillé</li></ul>
+      </div>
+      <div class="space phone-s">
+        <h3>Sur téléphone</h3>
+        <p>Pour noter vite et retrouver ses idées en route.</p>
+        <ul><li>Sélection multiple : dupliquer, déplacer, supprimer</li><li>Fonds d'écran personnalisables</li><li>Code PIN pour rouvrir en un geste</li></ul>
+      </div>
+    </div>
+    <p class="move spaces-note"><b>Passer d'un espace à l'autre :</b> dans le menu d'une note, choisis « Déplacer vers la version téléphone » ou « Déplacer vers la version ordinateur ». Sur le téléphone, le bouton « Version ordinateur » affiche l'espace du PC.</p>
+  </div>
+</section>
+
+<section id="telecharger">
+  <div class="wrap">
+    <h2>Choisis ta version.</h2>
+    <div class="dl">
+      <div class="row" id="row-android">
+        <div><h3>Android</h3></div>
+        <p>Application à installer depuis le fichier APK. Elle garde tes notes même hors connexion.</p>
+        <a class="btn main" id="dl-apk" href="releases/download/apk-latest/Noteo.apk">Télécharger l'APK</a>
+      </div>
+      <div class="row" id="row-windows">
+        <div><h3>Windows</h3></div>
+        <p>Installateur pour PC, avec raccourcis sur le bureau et dans le menu Démarrer.</p>
+        <a class="btn main" id="dl-win" href="releases/download/pc-latest/Noteo-Installateur.exe">Télécharger pour Windows</a>
+      </div>
+      <div class="row" id="row-web">
+        <div><h3>Navigateur</h3></div>
+        <p>Rien à installer. Ouvre l'appli, puis « Ajouter à l'écran d'accueil » pour l'avoir comme une appli.</p>
+        <a class="btn" href="app/">Ouvrir l'appli web</a>
+      </div>
+    </div>
+    <details>
+      <summary>Installer l'APK sur Android</summary>
+      <ol>
+        <li>Télécharge Noteo.apk depuis ton téléphone.</li>
+        <li>Ouvre le fichier. Si Android le demande, autorise l'installation depuis ce navigateur.</li>
+        <li>Lance Noteo, puis connecte ton compte en ligne pour retrouver tes notes.</li>
+      </ol>
+    </details>
+  </div>
+</section>
+
+<div class="wrap">
+  <footer><span>Noteo, un projet de Kaïto.</span><span>Tes notes sont chiffrées avec ton mot de passe : le serveur ne peut pas les lire.</span></footer>
+</div>
+
+<script>
+(function(){
+  // Adresse du dépôt, déduite de l'adresse de la page (sinon valeurs par défaut)
+  var user='tristancremault', repo='Noteo';
+  var h=location.hostname, p=location.pathname.split('/').filter(Boolean);
+  if(/\.github\.io$/.test(h)){ user=h.split('.')[0]; if(p[0]) repo=p[0]; }
+  var base='https://github.com/'+user+'/'+repo+'/';
+  ['dl-apk','dl-win'].forEach(function(id){
+    var a=document.getElementById(id); a.href=base+a.getAttribute('href');
+  });
+  // Met en avant la version qui correspond à l'appareil
+  var ua=navigator.userAgent, rec=null, main=document.getElementById('cta-main'), sub=document.getElementById('cta-sub');
+  if(/Android/i.test(ua)){ rec='row-android'; main.textContent='Installer pour Android'; main.href='#telecharger'; sub.textContent='Ou ouvre simplement l’appli web, sans rien installer.'; }
+  else if(/Windows/i.test(ua)){ rec='row-windows'; main.textContent='Télécharger pour Windows'; main.href=document.getElementById('dl-win').href; sub.textContent='Ou ouvre l’appli web, sans rien installer.'; }
+  if(rec){
+    var r=document.getElementById(rec); r.classList.add('rec');
+    r.parentNode.insertBefore(r,r.parentNode.firstChild);
+  }
+})();
+</script>
+</body>
+</html>
