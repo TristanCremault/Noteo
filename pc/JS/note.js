@@ -330,7 +330,7 @@ function formatDate(dateStr) {
 }
 
 function populateFolderSelect(selectedValue) {
-  const all = getFolders();
+  const all = getFolders().filter((f) => !f.space || f.space === 'pc' || f.name === selectedValue);
   if (selectedValue && !all.some((f) => f.name === selectedValue)) {
     all.push({ name: selectedValue, parent: null });
   }
@@ -345,7 +345,7 @@ function populateFolderSelect(selectedValue) {
   function appendTree(parentEl, group, folder, depth) {
     const opt = document.createElement('option');
     opt.value = folder.name;
-    opt.textContent = "\u00A0\u00A0".repeat(depth) + (depth > 0 ? "↳ " : "") + (folder.name === "Dossier verrouillé" ? "🔒 " : "") + folder.name;
+    opt.textContent = "\u00A0\u00A0".repeat(depth) + (depth > 0 ? "↳ " : "") + (folder.name === "Dossier verrouillé" ? "🔒 " : "") + (folder.label || folder.name);
     parentEl.appendChild(opt);
     group.filter((f) => f.parent === folder.name).forEach((child) => appendTree(parentEl, group, child, depth + 1));
   }
@@ -572,6 +572,7 @@ document.getElementById('btn-move-space').addEventListener('click', async () => 
   }
   if (!(await noteoConfirm("Déplacer cette note vers la version téléphone ?\n\nElle disparaîtra de Noteo sur ordinateur et apparaîtra sur ton téléphone (même compte en ligne). Tu pourras la rapatrier depuis le téléphone.", 'Déplacer'))) return;
   pendingSpace = 'phone';
+  { const fo = getFolders().find((x) => x.name === folderSelect.value); if (fo && fo.space === 'pc') folderSelect.value = "Sans catégorie"; }
   await saveNote();
 });
 
@@ -634,7 +635,7 @@ function populateNewFolderParentSelect(preselect) {
   function appendOption(folder, depth) {
     const opt = document.createElement('option');
     opt.value = folder.name;
-    opt.textContent = "\u00A0\u00A0".repeat(depth) + (depth > 0 ? "↳ " : "") + (folder.name === "Dossier verrouillé" ? "🔒 " : "") + folder.name;
+    opt.textContent = "\u00A0\u00A0".repeat(depth) + (depth > 0 ? "↳ " : "") + (folder.name === "Dossier verrouillé" ? "🔒 " : "") + (folder.label || folder.name);
     newFolderParentSelectNote.appendChild(opt);
     allFolders.filter((f) => f.parent === folder.name).forEach((child) => appendOption(child, depth + 1));
   }
@@ -661,15 +662,21 @@ function confirmNewFolderNote() {
   const name = newFolderInputNote.value.trim();
   if (name !== "") {
     const folders = getFolders();
-    if (folders.some((f) => f.name === name)) {
-      noteoAlert('Un dossier "' + name + '" existe déjà.');
+    const parent = newFolderParentSelectNote.value || null;
+    const LOCKED_FOLDER = "Dossier verrouillé";
+    const lowName = name.toLowerCase();
+    if ((!parent && name === LOCKED_FOLDER) || folders.some((f) => (f.parent || null) === (parent || null) && (!f.space || f.space === 'pc') && (f.label || f.name).toLowerCase() === lowName)) {
+      noteoAlert('Un dossier "' + name + '" existe déjà ici.');
       return;
     }
-    const parent = newFolderParentSelectNote.value || null;
-    if (typeof clearFolderTombstone === 'function') clearFolderTombstone(name);
-    folders.push({ name: name, parent: parent, createdAt: new Date().toISOString() });
+    // Deux dossiers peuvent porter le même nom s'ils ne sont pas au même endroit : le nom interne reste unique, le nom affiché (label) est celui choisi
+    let internalName = name, suffix = 2;
+    while (folders.some((f) => f.name.toLowerCase() === internalName.toLowerCase()) || internalName === LOCKED_FOLDER) internalName = name + ' (' + (suffix++) + ')';
+    const labelPart = internalName !== name ? { label: name } : {};
+    if (typeof clearFolderTombstone === 'function') clearFolderTombstone(internalName);
+    folders.push(Object.assign({ name: internalName, parent: parent, space: 'pc', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, labelPart));
     saveFolders(folders);
-    populateFolderSelect(name);
+    populateFolderSelect(internalName);
   }
   newFolderFormNote.classList.add('hidden');
 }
@@ -931,6 +938,69 @@ document.getElementById('btn-italic').addEventListener('click', () => {
 document.getElementById('btn-underline').addEventListener('click', () => {
   focusEditor();
   document.execCommand('underline');
+});
+
+// --- Listes à cocher (même format que sur téléphone : <div class="todo" data-done="0|1">) ---
+function notifyContentChanged() { contentInput.dispatchEvent(new Event('input', { bubbles: true })); }
+
+document.getElementById('btn-todo').addEventListener('click', () => {
+  focusEditor();
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !contentInput.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+    document.execCommand('insertHTML', false, '<div class="todo" data-done="0"><br></div>');
+    return;
+  }
+  const r = sel.getRangeAt(0);
+  const isBlock = (c) => /^(DIV|P|H[1-6])$/.test(c.tagName) && r.intersectsNode(c);
+  let blocks = Array.from(contentInput.children).filter(isBlock);
+  if (!blocks.length) {
+    document.execCommand('formatBlock', false, 'div');
+    blocks = Array.from(contentInput.children).filter(isBlock);
+    if (!blocks.length) { document.execCommand('insertHTML', false, '<div class="todo" data-done="0"><br></div>'); return; }
+  }
+  const allTodo = blocks.every((b) => b.classList.contains('todo'));
+  blocks.forEach((b) => {
+    if (allTodo) { b.classList.remove('todo'); b.removeAttribute('data-done'); if (!b.getAttribute('class')) b.removeAttribute('class'); }
+    else { b.classList.add('todo'); if (!b.hasAttribute('data-done')) b.setAttribute('data-done', '0'); }
+  });
+  notifyContentChanged();
+});
+
+// Clic sur la case (à gauche de la ligne) : coche / décoche
+contentInput.addEventListener('mousedown', (e) => {
+  const t = e.target.closest && e.target.closest('.todo');
+  if (!t || !contentInput.contains(t)) return;
+  const rc = t.getBoundingClientRect();
+  if (e.clientX - rc.left > 30) return;
+  e.preventDefault();
+  t.setAttribute('data-done', t.getAttribute('data-done') === '1' ? '0' : '1');
+  notifyContentChanged();
+});
+
+// Entrée sur une case vide : on sort de la liste ; sinon la nouvelle case démarre décochée
+contentInput.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  let n = sel.anchorNode;
+  if (n && n.nodeType === 3) n = n.parentElement;
+  const t = n && n.closest && n.closest('.todo');
+  if (!t || !contentInput.contains(t)) return;
+  if (!t.textContent.replace(/\u200b/g, '').trim()) {
+    e.preventDefault();
+    t.classList.remove('todo'); t.removeAttribute('data-done');
+    if (!t.getAttribute('class')) t.removeAttribute('class');
+    if (!t.firstChild) t.appendChild(document.createElement('br'));
+    notifyContentChanged();
+  }
+});
+contentInput.addEventListener('input', (e) => {
+  if (e.inputType !== 'insertParagraph') return;
+  const sel = window.getSelection();
+  let n = sel.rangeCount ? sel.anchorNode : null;
+  if (n && n.nodeType === 3) n = n.parentElement;
+  const t = n && n.closest && n.closest('.todo');
+  if (t) t.setAttribute('data-done', '0');
 });
 
 document.getElementById('btn-highlight').addEventListener('click', (e) => {

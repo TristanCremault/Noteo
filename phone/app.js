@@ -54,9 +54,27 @@
     }
     return false;
   }
+  // Un dossier créé sur le téléphone n'apparaît que sur le téléphone (idem PC). Les anciens dossiers sans espace restent communs.
+  function inSpace(f, sp) { return !f.space || f.space === (sp || curSpace()); }
   function visibleFolders() {
     var all = getFolders();
-    return all.filter(function (f) { return lockedOpen() || !isLocked(f.name, all); });
+    return all.filter(function (f) { return inSpace(f) && (lockedOpen() || !isLocked(f.name, all)); });
+  }
+  // Ordre choisi par l'utilisateur (champ pos), sinon ordre de création
+  function orderFolders(list) {
+    return list.map(function (f, i) { return { f: f, i: i, p: typeof f.pos === 'number' ? f.pos : i * 10 }; })
+      .sort(function (a, b) { return (a.p - b.p) || (a.i - b.i); }).map(function (x) { return x.f; });
+  }
+  // Nom affiché d'un dossier : « label » si le nom interne a dû être modifié pour rester unique (deux dossiers peuvent s'appeler pareil s'ils ne sont pas au même endroit)
+  function fLabel(f) { return (f && f.label) || (f && f.name) || ''; }
+  function labelOf(name) { var f = getFolders().find(function (x) { return x.name === name; }); return f ? fLabel(f) : name; }
+  function internalTaken(nm, except) { var low = nm.toLowerCase(); return nm === LOCKED_FOLDER || getFolders().some(function (f) { return f.name !== except && f.name.toLowerCase() === low; }); }
+  function internalNameFor(label) { var nm = label, k = 2; while (internalTaken(nm)) nm = label + ' (' + (k++) + ')'; return nm; }
+  // Même nom interdit seulement entre dossiers du même parent
+  function siblingTaken(label, parent, except) {
+    var low = label.toLowerCase();
+    if (!parent && label === LOCKED_FOLDER) return true;
+    return getFolders().some(function (f) { return f.name !== except && (f.parent || null) === (parent || null) && inSpace(f) && fLabel(f).toLowerCase() === low; });
   }
   function folderPath(name) {
     var all = getFolders();
@@ -64,7 +82,7 @@
     var seen = {};
     var cur = all.find(function (f) { return f.name === name; });
     while (cur && !seen[cur.name]) {
-      parts.unshift(cur.name);
+      parts.unshift(fLabel(cur));
       seen[cur.name] = true;
       cur = cur.parent ? all.find(function (f) { return f.name === cur.parent; }) : null;
     }
@@ -117,7 +135,9 @@
     browse: null,             // dossier parent affiché dans la vue "Dossier" (null = racine)
     query: ''
   };
-  var sel = { on: false, ids: {} };   // mode « Sélectionner »
+  var sel = { on: false, ids: {}, f: {} };   // mode « Sélectionner » (notes et dossiers)
+  var selNotes = [], selFolders = [];
+  function selFolderNames() { return Object.keys(sel.f).filter(function (k) { return sel.f[k]; }); }
   function selIds() { return Object.keys(sel.ids).filter(function (k) { return sel.ids[k]; }); }
   try {
     var savedFolder = sessionStorage.getItem('noteo-active-folder');
@@ -165,7 +185,6 @@
     $('space-banner').textContent = '🖥️ Espace ordinateur : les notes de Noteo sur PC';
     $('pin-phone').textContent = inPc ? '📱 Version téléphone' : 'Version ordinateur';
     $('sel-space').textContent = inPc ? 'Vers tel' : 'Vers PC';
-    if (state.view === 'folders' && sel.on) { sel.on = false; sel.ids = {}; }
     appEl.classList.toggle('selecting', sel.on);
     $('selbar').hidden = !sel.on;
     $('pin-select').setAttribute('aria-pressed', String(sel.on));
@@ -196,19 +215,18 @@
         return String(n.title || '').toLowerCase().indexOf(q) >= 0 || (!protectedBody && stripHtml(n.content).toLowerCase().indexOf(q) >= 0);
       });
     }
-    notes.sort(function (a, b) { return new Date(b.updatedAt) - new Date(a.updatedAt); });
-
-    if (sel.on) {
-      listEl.innerHTML = '';
-      selNotes = notes;
-      notes.forEach(function (n) { listEl.appendChild(noteCard(n)); });
-      if (!notes.length) listEl.appendChild(emptyState(q));
-      updateSelUI();
-      return;
+    // Recherche : titre identique, puis titre qui commence par le mot, puis titre qui le contient, puis le reste (mot dans le texte)
+    function rank(n) {
+      if (!q) return 0;
+      var t = String(n.title || '').toLowerCase();
+      return t === q ? 0 : (t.indexOf(q) === 0 ? 1 : (t.indexOf(q) >= 0 ? 2 : 3));
     }
+    notes.sort(function (a, b) { return (rank(a) - rank(b)) || (new Date(b.updatedAt) - new Date(a.updatedAt)); });
 
     // Sous-dossiers du dossier ouvert (en tête de liste) + boutons « Parent » et « + Sous-dossier »
     var kidsRows = [];
+    selFolders = [];
+    selNotes = notes;
     var isRealFolder = state.folder !== FAVORITES && state.folder !== ALL;
     if (curSpace() === 'pc') {
       var rf = document.createElement('button');
@@ -224,7 +242,7 @@
       if (parent) {
         var up = document.createElement('button');
         up.className = 'chip';
-        up.textContent = '↑ ' + parent;
+        up.textContent = '↑ ' + labelOf(parent);
         up.style.maxWidth = '48vw';
         up.style.overflow = 'hidden';
         up.style.textOverflow = 'ellipsis';
@@ -238,7 +256,9 @@
       crumbActions.appendChild(addSub);
       if (!q) {
         var allNotes = spaceNotes();
-        kidsRows = visible.filter(function (f) { return f.parent === state.folder; }).map(function (f) { return folderRow(f, visible, allNotes, 0, false); });
+        var kidsList = orderFolders(visible.filter(function (f) { return f.parent === state.folder; }));
+        selFolders = kidsList.map(function (f) { return f.name; }).filter(function (n) { return n !== DEFAULT_FOLDER && n !== LOCKED_FOLDER; });
+        kidsRows = kidsList.map(function (f) { return folderRow(f, visible, allNotes, 0, false); });
       }
     }
 
@@ -246,9 +266,8 @@
     kidsRows.forEach(function (r) { listEl.appendChild(r); });
     if (!notes.length) {
       if (!kidsRows.length) listEl.appendChild(emptyState(q));
-      return;
-    }
-    notes.forEach(function (n) { listEl.appendChild(noteCard(n)); });
+    } else notes.forEach(function (n) { listEl.appendChild(noteCard(n)); });
+    if (sel.on) updateSelUI();
   }
 
   function emptyState(q) {
@@ -330,8 +349,9 @@
         sel.ids[note.id] = !sel.ids[note.id];
         card.classList.toggle('selected', !!sel.ids[note.id]);
         updateSelUI();
-      } else openEditor(note.id);
+      } else { lastOrigin = card.getBoundingClientRect(); openEditor(note.id); }
     }
+    card.setAttribute('data-id', note.id);
     card.addEventListener('click', activate);
     card.addEventListener('keydown', function (e) { if (e.key === 'Enter') activate(); });
     more.addEventListener('click', function (e) { e.stopPropagation(); noteMenu(note.id); });
@@ -369,16 +389,128 @@
   }
 
   function folderMenu(name) {
+    var all = getFolders();
+    var me = all.find(function (f) { return f.name === name; });
+    var special = name === DEFAULT_FOLDER || name === LOCKED_FOLDER;
+    var sibs = me ? orderFolders(visibleFolders().filter(function (f) { return (f.parent || null) === (me.parent || null); })) : [];
+    var idx = sibs.findIndex(function (f) { return f.name === name; });
     openSheet(function (sheet) {
-      heading(sheet, name);
+      heading(sheet, labelOf(name));
       opt(sheet, 'Ouvrir le dossier', '', function () {
         closeSheet();
         state.folder = name; state.view = 'notes'; state.query = ''; searchEl.value = '';
         render();
       });
       opt(sheet, '+ Nouveau sous-dossier', '', function () { newFolderSheet(name); });
+      if (!special) opt(sheet, 'Renommer', '', function () { renameFolderSheet(name); });
+      if (!special) opt(sheet, 'Déplacer le dossier', '', function () { moveFolderSheet([name]); });
+      if (idx > 0) opt(sheet, '↑ Monter dans la liste', '', function () { shiftFolder(name, -1); });
+      if (idx >= 0 && idx < sibs.length - 1) opt(sheet, '↓ Descendre dans la liste', '', function () { shiftFolder(name, 1); });
       if (name !== DEFAULT_FOLDER) opt(sheet, 'Supprimer le dossier', 'danger', function () { confirmDeleteFolder(name); });
     });
+  }
+
+  function folderNameTaken(name, except) {
+    var low = name.toLowerCase();
+    return name === LOCKED_FOLDER || getFolders().some(function (f) { return f.name !== except && f.name.toLowerCase() === low; });
+  }
+  function spellAttrs(input) {   // clavier : suggestions et correction automatique
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('autocorrect', 'on');
+    input.setAttribute('autocapitalize', 'sentences');
+    input.setAttribute('spellcheck', 'true');
+    input.setAttribute('enterkeyhint', 'done');
+    input.type = 'text';
+    return input;
+  }
+  function renameFolderSheet(name) {
+    openSheet(function (sheet) {
+      heading(sheet, 'Renommer « ' + labelOf(name) + ' »');
+      var input = spellAttrs(document.createElement('input'));
+      input.className = 'field';
+      input.id = 'rename-folder-name';
+      input.maxLength = 60;
+      input.value = labelOf(name);
+      var err = errLine(sheet);
+      function submit() {
+        var nn = input.value.trim();
+        if (!nn) { err.textContent = 'Donne un nom au dossier.'; return; }
+        if (nn === labelOf(name)) { closeSheet(); return; }
+        if (siblingTaken(nn, parentOf(name), name)) { err.textContent = 'Un dossier porte déjà ce nom ici. Choisis-en un autre.'; return; }
+        var now = new Date().toISOString();
+        var folders = getFolders();
+        if (internalTaken(nn, name)) {   // le nom est pris ailleurs : on change seulement le nom affiché
+          folders.forEach(function (f) { if (f.name === name) { f.label = nn; f.updatedAt = now; } });
+          saveFolders(folders);
+          closeSheet(); render(); toast('Dossier renommé');
+          return;
+        }
+        folders.forEach(function (f) {
+          if (f.name === name) { f.name = nn; delete f.label; f.updatedAt = now; }
+          else if (f.parent === name) { f.parent = nn; f.updatedAt = now; }
+        });
+        recordFolderDeletion(name);
+        clearFolderTombstone(nn);
+        saveFolders(folders);
+        var notes = getNotes();
+        notes.forEach(function (n) { if (n.folder === name) { n.folder = nn; n.updatedAt = now; } });
+        saveNotes(notes);
+        if (state.folder === name) state.folder = nn;
+        if (state.browse === name) state.browse = nn;
+        try { var col = JSON.parse(read('noteo-collapsed-folders') || '[]'); write('noteo-collapsed-folders', JSON.stringify(col.map(function (c) { return c === name ? nn : c; }))); } catch (e) { /* ignoré */ }
+        closeSheet();
+        render();
+        toast('Dossier renommé');
+      }
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+      sheet.insertBefore(input, err);
+      sheetButtons(sheet, 'Renommer', submit);
+      setTimeout(function () { input.focus(); input.select(); }, 30);
+    });
+  }
+
+  // Déplace un ou plusieurs dossiers (avec tout leur contenu) dans un autre dossier ou à la racine
+  function moveFolderSheet(names, done) {
+    var all = getFolders();
+    var exclude = names.slice();
+    names.forEach(function (n) { descendants(n, all).forEach(function (d) { exclude.push(d); }); });
+    function apply(target) {
+      var now = new Date().toISOString(), moved = 0, clash = 0;
+      var folders = getFolders();
+      names.forEach(function (n) {
+        var f = folders.find(function (x) { return x.name === n; });
+        if (!f || n === DEFAULT_FOLDER || n === LOCKED_FOLDER) return;
+        if (target && isLocked(target, folders) !== isLocked(n, folders)) return;   // le verrouillé reste à part
+        if ((f.parent || null) === (target || null)) return;
+        if (siblingTaken(fLabel(f), target || null, f.name)) { clash++; return; }   // même nom déjà présent dans la destination
+        f.parent = target || null;
+        f.updatedAt = now;
+        moved++;
+      });
+      if (moved) saveFolders(folders);
+      if (done) done();
+      render();
+      toast(moved ? plural(moved, 'dossier déplacé', 'dossiers déplacés') : (clash ? 'Un dossier du même nom existe déjà à cet endroit.' : 'Rien à déplacer (dossier verrouillé ou déjà là).'));
+    }
+    folderPicker('Déplacer ' + (names.length > 1 ? plural(names.length, 'dossier', 'dossiers') : '« ' + labelOf(names[0]) + ' »') + ' dans', null, function (t) { apply(t); },
+      { label: 'Mettre à la racine', fn: function () { closeSheet(); apply(null); } }, exclude);
+  }
+  function shiftFolder(name, dir) {
+    var folders = getFolders();
+    var me = folders.find(function (f) { return f.name === name; });
+    if (!me) return;
+    var sibs = orderFolders(visibleFolders().filter(function (f) { return (f.parent || null) === (me.parent || null); }));
+    var i = sibs.findIndex(function (f) { return f.name === name; }), j = i + dir;
+    if (i < 0 || j < 0 || j >= sibs.length) return;
+    var t = sibs[i]; sibs[i] = sibs[j]; sibs[j] = t;
+    var now = new Date().toISOString();
+    sibs.forEach(function (sf, k) {
+      var real = folders.find(function (f) { return f.name === sf.name; });
+      if (real) { real.pos = k * 10; real.updatedAt = now; }
+    });
+    saveFolders(folders);
+    closeSheet();
+    render();
   }
 
   // Ligne de dossier : appui = ouvrir, appui long = options (sous-dossier, supprimer)
@@ -391,8 +523,28 @@
     var main = document.createElement('button');
     main.className = 'folder-main';
     main.innerHTML = '<span class="folder-ico">' + ICON_FOLDER + '</span><span class="folder-text"><span class="folder-name"></span><span class="folder-count"></span></span>';
-    main.querySelector('.folder-name').textContent = (f.name === LOCKED_FOLDER ? '🔒 ' : '') + (showPath ? folderPath(f.name) : f.name);
+    main.querySelector('.folder-name').textContent = (f.name === LOCKED_FOLDER ? '🔒 ' : '') + (showPath ? folderPath(f.name) : fLabel(f));
     main.querySelector('.folder-count').textContent = plural(count, 'note', 'notes') + (kids ? ' · ' + plural(kids, 'dossier', 'dossiers') : '');
+    if (sel.on && (f.name === DEFAULT_FOLDER || f.name === LOCKED_FOLDER)) {   // dossiers fixes : on ne les déplace ni ne les supprime
+      row.style.opacity = '0.45';
+      row.appendChild(main);
+      return row;
+    }
+    if (sel.on) {
+      row.classList.add('selectable');
+      row.classList.toggle('selected', !!sel.f[f.name]);
+      var mark = document.createElement('span');
+      mark.className = 'selmark';
+      mark.setAttribute('aria-hidden', 'true');
+      row.insertBefore(mark, row.firstChild);
+      main.addEventListener('click', function () {
+        sel.f[f.name] = !sel.f[f.name];
+        row.classList.toggle('selected', !!sel.f[f.name]);
+        updateSelUI();
+      });
+      row.appendChild(main);
+      return row;
+    }
     main.addEventListener('click', function () {
       state.folder = f.name;
       state.view = 'notes';
@@ -417,30 +569,22 @@
     var items = [];
     if (q) {
       crumbEl.textContent = 'Résultats';
-      folders.filter(function (f) { return f.name.toLowerCase().indexOf(q) >= 0; }).forEach(function (f) { items.push({ f: f, d: 0 }); });
+      folders.filter(function (f) { return fLabel(f).toLowerCase().indexOf(q) >= 0; }).forEach(function (f) { items.push({ f: f, d: 0 }); });
     } else {
       crumbEl.textContent = 'Dossiers';
       // Les sous-dossiers ne sont pas listés ici : on les voit en ouvrant leur dossier
-      folders.filter(function (f) { return !f.parent || !folders.some(function (p) { return p.name === f.parent; }); }).forEach(function (f) { items.push({ f: f, d: 0 }); });
+      orderFolders(folders.filter(function (f) { return !f.parent || !folders.some(function (p) { return p.name === f.parent; }); })).forEach(function (f) { items.push({ f: f, d: 0 }); });
     }
 
     crumbActions.innerHTML = '';
-    var back = document.createElement('button');
-    back.className = 'chip';
-    back.textContent = '← Retour';
-    back.addEventListener('click', function () {
-      if (state.query) { searchEl.value = ''; state.query = ''; }
-      else state.view = 'notes';
-      render();
-    });
     var add = document.createElement('button');
     add.className = 'chip primary';
     add.textContent = '+ Nouveau dossier';
     add.addEventListener('click', function () { newFolderSheet(null); });
-    crumbActions.appendChild(back);
     crumbActions.appendChild(add);
     if (lockedOpen()) crumbActions.appendChild(lockedExitChip());
 
+    selNotes = []; selFolders = items.map(function (it) { return it.f.name; }).filter(function (n) { return n !== DEFAULT_FOLDER && n !== LOCKED_FOLDER; });
     if (!items.length) {
       var box = document.createElement('div');
       box.className = 'empty';
@@ -448,13 +592,15 @@
       p.textContent = q ? 'Aucun dossier ne correspond.' : 'Aucun dossier. Appuie sur « + Nouveau dossier » pour en créer un.';
       box.appendChild(p);
       listEl.appendChild(box);
+      if (sel.on) updateSelUI();
       return;
     }
     items.forEach(function (it) { listEl.appendChild(folderRow(it.f, folders, notes, it.d, !!q)); });
     var tip = document.createElement('p');
     tip.className = 'tip';
-    tip.textContent = 'Appui long sur un dossier : sous-dossier, supprimer.';
+    tip.textContent = 'Appui long sur un dossier : renommer, déplacer, changer l’ordre, supprimer.';
     listEl.appendChild(tip);
+    if (sel.on) updateSelUI();
   }
 
   // ---------- Feuilles ----------
@@ -472,6 +618,7 @@
     scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSheet(); });
     build(sheet);
     document.body.appendChild(scrim);
+    if (motionOk()) { scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180 }); sheet.animate([{ transform: 'translateY(40px)', opacity: 0.4 }, { transform: 'none', opacity: 1 }], { duration: 240, easing: EASE }); }
     var f = sheet.querySelector('input');
     if (f && !sheet.hasAttribute('data-nofocus')) f.focus();
   }
@@ -501,12 +648,13 @@
   function newFolderSheet(parent) {
     parent = parent || null;
     openSheet(function (sheet) {
-      heading(sheet, parent ? 'Nouveau sous-dossier dans « ' + parent + ' »' : 'Nouveau dossier');
+      heading(sheet, parent ? 'Nouveau sous-dossier dans « ' + labelOf(parent) + ' »' : 'Nouveau dossier');
       var input = document.createElement('input');
       input.className = 'field';
       input.id = 'new-folder-name';
       input.placeholder = 'Nom du dossier';
       input.maxLength = 60;
+      spellAttrs(input);
       var err = document.createElement('p');
       err.className = 'hint';
       var row = document.createElement('div');
@@ -521,13 +669,16 @@
       function submit() {
         var name = input.value.trim();
         if (!name) { err.textContent = 'Donne un nom au dossier.'; return; }
-        if (name === LOCKED_FOLDER || getFolders().some(function (f) { return f.name.toLowerCase() === name.toLowerCase(); })) {
-          err.textContent = 'Ce nom existe déjà. Choisis-en un autre.';
+        if (siblingTaken(name, parent)) {
+          err.textContent = 'Un dossier porte déjà ce nom ici. Choisis-en un autre.';
           return;
         }
         var folders = getFolders();
-        folders.push({ name: name, parent: parent, createdAt: new Date().toISOString() });
-        clearFolderTombstone(name);
+        var internal = internalNameFor(name);
+        var nf = { name: internal, parent: parent, space: curSpace(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        if (internal !== name) nf.label = name;
+        folders.push(nf);
+        clearFolderTombstone(internal);
         saveFolders(folders);
         if (parent) { try { var col = new Set(JSON.parse(read('noteo-collapsed-folders') || '[]')); col.delete(parent); write('noteo-collapsed-folders', JSON.stringify(Array.from(col))); } catch (e) { /* ignoré */ } }
         closeSheet();
@@ -569,24 +720,25 @@
   }
 
   // Sélecteur de dossier avec navigation : on entre dans un dossier avec « › », on le choisit en touchant son nom
-  function folderPicker(title, current, onPick, extra) {
+  function folderPicker(title, current, onPick, extra, exclude) {
+    exclude = exclude || [];
     var parent = parentOf(current);
-    var all0 = visibleFolders();
+    var all0 = visibleFolders().filter(function (f) { return exclude.indexOf(f.name) < 0; });
     if (parent && !all0.some(function (f) { return f.name === parent; })) parent = null;
     openSheet(function (sheet) {
       function draw() {
         sheet.innerHTML = '';
         heading(sheet, title);
-        var all = visibleFolders();
+        var all = visibleFolders().filter(function (f) { return exclude.indexOf(f.name) < 0; });
         var where = document.createElement('p');
         where.className = 'hint';
         where.textContent = parent ? 'Dans : ' + folderPath(parent) : 'Dossiers';
         sheet.appendChild(where);
         if (parent) {
           opt(sheet, '← Dossier précédent', '', function () { parent = parentOf(parent); draw(); });
-          opt(sheet, 'Choisir « ' + parent + ' »', parent === current ? 'sel' : '', function () { closeSheet(); onPick(parent); });
+          opt(sheet, 'Choisir « ' + labelOf(parent) + ' »', parent === current ? 'sel' : '', function () { closeSheet(); onPick(parent); });
         }
-        var list = all.filter(function (f) { return parent ? f.parent === parent : (!f.parent || !all.some(function (p) { return p.name === f.parent; })); });
+        var list = orderFolders(all.filter(function (f) { return parent ? f.parent === parent : (!f.parent || !all.some(function (p) { return p.name === f.parent; })); }));
         list.forEach(function (f) {
           var kids = all.some(function (x) { return x.parent === f.name; });
           var row = document.createElement('div');
@@ -594,13 +746,13 @@
           var main = document.createElement('button');
           main.className = 'opt pick-main' + (f.name === current ? ' sel' : '');
           main.innerHTML = '<span class="folder-ico">' + ICON_FOLDER + '</span><span class="pick-name"></span>';
-          main.querySelector('.pick-name').textContent = f.name;
+          main.querySelector('.pick-name').textContent = fLabel(f);
           main.addEventListener('click', function () { closeSheet(); onPick(f.name); });
           row.appendChild(main);
           if (kids) {
             var into = document.createElement('button');
             into.className = 'pick-into';
-            into.setAttribute('aria-label', 'Ouvrir ' + f.name);
+            into.setAttribute('aria-label', 'Ouvrir ' + fLabel(f));
             into.textContent = '›';
             into.addEventListener('click', function () { parent = f.name; draw(); });
             row.appendChild(into);
@@ -663,6 +815,23 @@
     });
   }
 
+  // Supprime des dossiers et tous leurs sous-dossiers ; les notes qu'ils contiennent retombent dans le dossier par défaut
+  function deleteFoldersNow(names) {
+    var all = getFolders(), now = new Date().toISOString(), toRemove = [];
+    names.forEach(function (n) {
+      if (n === DEFAULT_FOLDER) return;
+      [n].concat(descendants(n, all)).forEach(function (x) { if (toRemove.indexOf(x) < 0) toRemove.push(x); });
+    });
+    if (!toRemove.length) return;
+    var parentName = parentOf(names[0]);
+    toRemove.forEach(recordFolderDeletion);
+    saveFolders(all.filter(function (f) { return toRemove.indexOf(f.name) < 0; }));
+    var notes = getNotes();
+    notes.forEach(function (n) { if (toRemove.indexOf(n.folder) >= 0) { n.folder = DEFAULT_FOLDER; n.updatedAt = now; } });
+    saveNotes(notes);
+    if (toRemove.indexOf(state.browse) >= 0) state.browse = parentName;
+    if (toRemove.indexOf(state.folder) >= 0) state.folder = DEFAULT_FOLDER;
+  }
   function confirmDeleteFolder(name) {
     var all = getFolders();
     var kids = descendants(name, all);
@@ -670,7 +839,7 @@
     openSheet(function (sheet) {
       heading(sheet, 'Supprimer ce dossier ?');
       var p = document.createElement('p');
-      p.textContent = '« ' + name + ' »' + (kids.length ? ' et ses ' + plural(kids.length, 'sous-dossier', 'sous-dossiers') : '') +
+      p.textContent = '« ' + labelOf(name) + ' »' + (kids.length ? ' et ses ' + plural(kids.length, 'sous-dossier', 'sous-dossiers') : '') +
         ' seront supprimés. Les notes qu’ils contiennent sont déplacées dans « ' + DEFAULT_FOLDER + ' ».';
       sheet.appendChild(p);
       var row = document.createElement('div');
@@ -685,14 +854,7 @@
       del.style.borderColor = 'var(--danger)';
       del.textContent = 'Supprimer';
       del.addEventListener('click', function () {
-        var now = new Date().toISOString();
-        toRemove.forEach(recordFolderDeletion);
-        saveFolders(getFolders().filter(function (f) { return toRemove.indexOf(f.name) < 0; }));
-        var notes = getNotes();
-        notes.forEach(function (n) { if (toRemove.indexOf(n.folder) >= 0) { n.folder = DEFAULT_FOLDER; n.updatedAt = now; } });
-        saveNotes(notes);
-        if (toRemove.indexOf(state.browse) >= 0) state.browse = parentOf(name);
-        if (toRemove.indexOf(state.folder) >= 0) state.folder = DEFAULT_FOLDER;
+        deleteFoldersNow([name]);
         closeSheet();
         render();
       });
@@ -980,7 +1142,7 @@
     savedRange = null;
     selectedImg = null;
     findBar.hidden = true;
-    bodyEl.spellcheck = read('noteo-spellcheck') !== 'off';
+    bodyEl.spellcheck = read('noteo-spellcheck') === 'on';   // par défaut sans soulignement : toucher un mot souligné ouvre le menu du clavier et empêche d'écrire (les suggestions du clavier restent actives)
     syncFavButton(ed.favorite);
     inFolderEl.textContent = 'Dans : ' + folderPath(ed.folder) + '  ▾';
     setStatus(ed.isNew ? 'Nouvelle note' : 'Enregistré');
@@ -989,8 +1151,78 @@
     applyNoteBg();
     updateFoot();
     editorEl.hidden = false;
-    try { history.pushState({ noteo: 'editor' }, ''); } catch (e) { /* ignoré */ }
+    fitEditor();
+    animateEditorIn();
   }
+
+
+  // ---------- Transitions (ouverture / fermeture d'une note, page compte) ----------
+  var lastOrigin = null;
+  function motionOk() { try { return !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) && !!Element.prototype.animate; } catch (e) { return false; } }
+  var EASE = 'cubic-bezier(.22,.9,.3,1)';
+  function insetFrom(r) { return 'inset(' + Math.max(0, r.top) + 'px ' + Math.max(0, window.innerWidth - r.right) + 'px ' + Math.max(0, window.innerHeight - r.bottom) + 'px ' + Math.max(0, r.left) + 'px round 18px)'; }
+  // La note s'ouvre en s'agrandissant depuis sa carte (comme sur Xiaomi)
+  function animateEditorIn() {
+    var r = lastOrigin; lastOrigin = null;
+    if (!motionOk()) return;
+    if (r && r.width > 0 && r.height > 0) {
+      editorEl.animate([{ clipPath: insetFrom(r), opacity: 0.4 }, { clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 }], { duration: 340, easing: EASE });
+    } else {
+      editorEl.animate([{ transform: 'translateY(5%)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 260, easing: EASE });
+    }
+  }
+  function makeGhost(el) {
+    if (!motionOk() || el.hidden) return null;
+    try {
+      var g = el.cloneNode(true);
+      g.removeAttribute('id');
+      g.querySelectorAll('[id]').forEach(function (n) { n.removeAttribute('id'); });
+      var t1 = el.querySelector('input'), t2 = g.querySelector('input');
+      if (t1 && t2) t2.value = t1.value;
+      g.style.pointerEvents = 'none';
+      g.style.zIndex = '40';
+      g.hidden = false;
+      document.body.appendChild(g);
+      return g;
+    } catch (e) { return null; }
+  }
+  function animateGhostOut(g, noteId) {
+    if (!g) return;
+    var target = null;
+    if (noteId) { var c = listEl.querySelector('[data-id="' + noteId + '"]'); if (c) target = c.getBoundingClientRect(); }
+    var frames = target && target.height > 0
+      ? [{ clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 }, { clipPath: insetFrom(target), opacity: 0.3 }]
+      : [{ transform: 'none', opacity: 1 }, { transform: 'translateY(6%)', opacity: 0 }];
+    var a = g.animate(frames, { duration: 260, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' });
+    a.onfinish = a.oncancel = function () { g.remove(); };
+    setTimeout(function () { g.remove(); }, 600);
+  }
+  function slideIn(el) {
+    if (!motionOk()) return;
+    el.animate([{ transform: 'translateX(14%)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 260, easing: EASE });
+  }
+  function slideOut(el) {
+    if (el.hidden) return;
+    if (!motionOk()) { el.hidden = true; return; }
+    var a = el.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateX(14%)', opacity: 0 }], { duration: 200, easing: 'cubic-bezier(.4,0,.6,1)' });
+    a.onfinish = a.oncancel = function () { el.hidden = true; };
+  }
+
+  // L'éditeur suit la zone réellement visible (clavier ouvert) : la barre du haut ne disparaît plus
+  function fitEditor() {
+    if (editorEl.hidden) return;
+    var vv = window.visualViewport;
+    if (vv) {
+      editorEl.style.top = vv.offsetTop + 'px';
+      editorEl.style.height = vv.height + 'px';
+      editorEl.style.bottom = 'auto';
+    }
+    if (window.scrollY || document.documentElement.scrollTop || document.body.scrollTop) { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }
+  }
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', fitEditor); window.visualViewport.addEventListener('scroll', fitEditor); }
+  window.addEventListener('scroll', function () { if (!editorEl.hidden) fitEditor(); }, true);
+  window.addEventListener('resize', fitEditor);
+  editorEl.addEventListener('focusin', function () { setTimeout(fitEditor, 50); setTimeout(fitEditor, 300); });
 
   // ---------- Enregistrement (automatique) ----------
   function queueSave() {
@@ -1053,6 +1285,8 @@
 
   function closeEditor(skipSave) {
     clearTimeout(saveTimer);
+    var closingId = ed && ed.id;
+    var ghost = makeGhost(editorEl);
     var p = skipSave ? Promise.resolve() : persistCurrent();
     ed = null;
     currentId = null;
@@ -1062,9 +1296,11 @@
     bodyEl.style.backgroundImage = '';
     bodyEl.classList.remove('has-bg');
     titleEl.value = '';
+    editorEl.style.cssText = '';
     closeSheet();
     render();
     p.then(render);
+    animateGhostOut(ghost, closingId);
   }
 
   // ---------- Sélection et commandes ----------
@@ -1121,6 +1357,65 @@
       return;
     }
     if (e.target.tagName === 'IMG' && ed && ed.editable) imageSheet(e.target);
+  });
+
+
+  // ---------- Listes à cocher (liste de courses…) ----------
+  // Une ligne à cocher est un <div class="todo" data-done="0|1"> : le même format s'affiche aussi sur PC.
+  function toggleTodo() {
+    if (!ed || !ed.editable) return;
+    restoreSel();
+    var sel = window.getSelection();
+    if (!sel.rangeCount || !bodyEl.contains(sel.getRangeAt(0).commonAncestorContainer)) { bodyEl.focus(); document.execCommand('insertHTML', false, '<div class="todo" data-done="0"><br></div>'); markDirty(); return; }
+    var r = sel.getRangeAt(0);
+    var blocks = Array.prototype.filter.call(bodyEl.children, function (c) { return /^(DIV|P|H[1-6])$/.test(c.tagName) && r.intersectsNode(c); });
+    if (!blocks.length) {
+      document.execCommand('formatBlock', false, 'div');
+      blocks = Array.prototype.filter.call(bodyEl.children, function (c) { return /^(DIV|P|H[1-6])$/.test(c.tagName) && r.intersectsNode(c); });
+      if (!blocks.length) { document.execCommand('insertHTML', false, '<div class="todo" data-done="0"><br></div>'); markDirty(); return; }
+    }
+    var allTodo = blocks.every(function (b) { return b.classList.contains('todo'); });
+    blocks.forEach(function (b) {
+      if (allTodo) { b.classList.remove('todo'); b.removeAttribute('data-done'); if (!b.getAttribute('class')) b.removeAttribute('class'); }
+      else { b.classList.add('todo'); if (!b.hasAttribute('data-done')) b.setAttribute('data-done', '0'); }
+    });
+    markDirty();
+    updateFoot();
+  }
+  // Appui sur la case (à gauche de la ligne) : coche / décoche
+  bodyEl.addEventListener('click', function (e) {
+    if (!ed || !ed.editable) return;
+    var t = e.target.closest && e.target.closest('.todo');
+    if (!t || !bodyEl.contains(t)) return;
+    var rc = t.getBoundingClientRect();
+    if (e.clientX - rc.left > 34) return;
+    e.preventDefault();
+    t.setAttribute('data-done', t.getAttribute('data-done') === '1' ? '0' : '1');
+    markDirty();
+  }, true);
+  // Entrée : nouvelle case décochée ; Entrée sur une case vide : sort de la liste
+  bodyEl.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.shiftKey || !ed || !ed.editable) return;
+    var sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    var n = sel.anchorNode;
+    if (n && n.nodeType === 3) n = n.parentElement;
+    var t = n && n.closest && n.closest('.todo');
+    if (!t || !bodyEl.contains(t)) return;
+    if (!t.textContent.replace(/​/g, '').trim()) {
+      e.preventDefault();
+      t.classList.remove('todo'); t.removeAttribute('data-done'); if (!t.getAttribute('class')) t.removeAttribute('class');
+      if (!t.firstChild) t.appendChild(document.createElement('br'));
+      markDirty();
+    }
+  });
+  bodyEl.addEventListener('input', function (e) {
+    if (e.inputType !== 'insertParagraph') return;
+    var sel = window.getSelection();
+    var n = sel.rangeCount ? sel.anchorNode : null;
+    if (n && n.nodeType === 3) n = n.parentElement;
+    var t = n && n.closest && n.closest('.todo');
+    if (t) t.setAttribute('data-done', '0');
   });
 
   // ---------- Barre d'outils ----------
@@ -1214,6 +1509,7 @@
     input.type = type || 'text';
     input.placeholder = placeholder || '';
     input.autocomplete = 'off';
+    if (!type || type === 'text') { input.setAttribute('autocorrect', 'on'); input.setAttribute('spellcheck', 'true'); input.setAttribute('autocapitalize', 'sentences'); }
     wrap.appendChild(input);
     return { wrap: wrap, input: input };
   }
@@ -1340,6 +1636,7 @@
     bold: function () { exec('bold'); },
     italic: function () { exec('italic'); },
     underline: function () { exec('underline'); },
+    todo: function () { toggleTodo(); },
     highlight: function () {
       paletteSheet('Surligner', 'aucun surlignage', function (c) { exec('hiliteColor', c || 'transparent'); });
     },
@@ -1376,11 +1673,7 @@
   }
 
   // ---------- Barre du haut : favori, supprimer, menu ----------
-  $('btn-editor-back').addEventListener('click', function () {
-    try { if (history.state && history.state.noteo === 'editor') { history.back(); return; } } catch (e) { /* ignoré */ }
-    closeEditor();
-  });
-  window.addEventListener('popstate', function () { if (!editorEl.hidden) closeEditor(); });
+  $('btn-editor-back').addEventListener('click', function () { closeEditor(); });
   document.addEventListener('visibilitychange', function () { if (document.hidden) persistCurrent(); });
 
   btnFavEditor.addEventListener('click', function () {
@@ -1474,13 +1767,16 @@
       ok.addEventListener('click', function () {
         var name = n.input.value.trim();
         if (!name) { err.textContent = 'Donne un nom au dossier.'; return; }
-        if (name === LOCKED_FOLDER || getFolders().some(function (f) { return f.name.toLowerCase() === name.toLowerCase(); })) { err.textContent = 'Ce nom existe déjà.'; return; }
+        if (siblingTaken(name, sel.value || null)) { err.textContent = 'Un dossier porte déjà ce nom ici.'; return; }
         var folders = getFolders();
-        folders.push({ name: name, parent: sel.value || null, createdAt: new Date().toISOString() });
-        clearFolderTombstone(name);
+        var internal = internalNameFor(name);
+        var nf = { name: internal, parent: sel.value || null, space: curSpace(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        if (internal !== name) nf.label = name;
+        folders.push(nf);
+        clearFolderTombstone(internal);
         saveFolders(folders);
-        ed.folder = name;
-        inFolderEl.textContent = 'Dans : ' + folderPath(name) + '  ▾';
+        ed.folder = internal;
+        inFolderEl.textContent = 'Dans : ' + folderPath(internal) + '  ▾';
         ed.dirty = true;
         closeSheet();
         markDirty();
@@ -1536,6 +1832,7 @@
 
       sectionLabel(sheet, 'Mise en forme');
       var r1 = toolRow(sheet);
+      toolBtn(r1, '☑', 'Liste à cocher', can, function () { closeSheet(); toggleTodo(); });
       toolBtn(r1, 'x²', 'Exposant', can, function () { exec('superscript'); });
       toolBtn(r1, 'x₂', 'Indice', can, function () { exec('subscript'); });
       toolBtn(r1, ALIGN_L, 'Aligner à gauche', can, function () { exec('justifyLeft'); });
@@ -1589,12 +1886,12 @@
       if (!isLocked(ed.folder, getFolders())) opt(sheet, '🔒 Déplacer vers le dossier verrouillé', '', function () { closeSheet(); lockCurrentIntoLockedFolder(); });
       opt(sheet, 'Partager la note', '', shareSheet);
       opt(sheet, ed.lock ? '🔒 Verrouillée : gérer le verrou' : '🔒 Verrouiller', '', lockEntry);
-      var spell = read('noteo-spellcheck') !== 'off';
-      opt(sheet, 'Correcteur : ' + (spell ? 'activé' : 'désactivé'), '', function () {
+      var spell = read('noteo-spellcheck') === 'on';
+      opt(sheet, 'Soulignement des fautes : ' + (spell ? 'activé' : 'désactivé'), '', function () {
         write('noteo-spellcheck', spell ? 'off' : 'on');
         bodyEl.spellcheck = !spell;
         closeSheet();
-        toast('Correcteur ' + (spell ? 'désactivé' : 'activé'));
+        toast('Soulignement des fautes ' + (spell ? 'désactivé' : 'activé'));
       });
     });
   }
@@ -1603,7 +1900,7 @@
   function noteText() {
     var title = titleEl.value.trim() || 'Sans titre';
     var tmp = document.createElement('div');
-    tmp.innerHTML = bodyEl.innerHTML.replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\b[^>]*>/gi, '$&\n');
+    tmp.innerHTML = bodyEl.innerHTML.replace(/<div class="todo" data-done="1"[^>]*>/gi, '[x] ').replace(/<div class="todo"[^>]*>/gi, '[ ] ').replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\b[^>]*>/gi, '$&\n');
     return { title: title, text: (tmp.textContent || '').replace(/\n{3,}/g, '\n\n').trim() };
   }
   // Dans l'APK (Capacitor) : on écrit le fichier puis on ouvre le partage Android (enregistrer, envoyer…)
@@ -1770,15 +2067,11 @@
     refreshAccount();
     accountEl.hidden = false;
     accountEl.querySelector('.account-scroll').scrollTop = 0;
-    try { history.pushState({ noteo: 'account' }, ''); } catch (e) { /* ignoré */ }
+    slideIn(accountEl);
   }
-  function closeAccount() { accountEl.hidden = true; }
+  function closeAccount() { slideOut(accountEl); }
 
-  $('btn-account-back').addEventListener('click', function () {
-    try { if (history.state && history.state.noteo === 'account') { history.back(); return; } } catch (e) { /* ignoré */ }
-    closeAccount();
-  });
-  window.addEventListener('popstate', function () { if (!accountEl.hidden) closeAccount(); });
+  $('btn-account-back').addEventListener('click', function () { closeAccount(); });
 
   accountEl.addEventListener('click', function (e) {
     var b = e.target.closest('[data-soon]');
@@ -1892,8 +2185,12 @@
       notes.push(n);
     });
     var fByName = {}, fOrder = [];
+    var fTime = function (f) { return Date.parse(f.updatedAt || f.createdAt || 0) || 0; };
     normFolders(lFolders).forEach(function (f) { if (!fByName[f.name]) fOrder.push(f.name); fByName[f.name] = f; });
-    normFolders(rFolders).forEach(function (f) { if (!fByName[f.name]) { fByName[f.name] = f; fOrder.push(f.name); } });
+    normFolders(rFolders).forEach(function (f) {
+      if (!fByName[f.name]) { fByName[f.name] = f; fOrder.push(f.name); }
+      else if (fTime(f) > fTime(fByName[f.name])) fByName[f.name] = f;   // renommé / déplacé / réordonné ailleurs
+    });
     var folders = [];
     fOrder.forEach(function (name) {
       var f = fByName[name];
@@ -2440,7 +2737,9 @@
 
   // ----- Photo de profil -----
   var logoImgEl = $('btn-logo').querySelector('img');
-  var logoDefaultSrc = logoImgEl ? logoImgEl.getAttribute('src') : '';
+  var logoDarkSrc = logoImgEl ? logoImgEl.getAttribute('src') : '';
+  var logoLightSrc = (logoImgEl && logoImgEl.getAttribute('data-light-src')) || logoDarkSrc;
+  function defaultLogo() { return effectiveTheme() === 'light' ? logoLightSrc : logoDarkSrc; }
   function refreshPhoto() {
     var photo = read('noteo-profile-photo');
     var av = $('acc-avatar');
@@ -2454,7 +2753,7 @@
       av.classList.remove('has-photo');
       av.innerHTML = '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c.8-3.6 3.8-5.5 7.5-5.5s6.7 1.9 7.5 5.5"/></svg>';
     }
-    if (logoImgEl) logoImgEl.src = photo || logoDefaultSrc;
+    if (logoImgEl) logoImgEl.src = photo || defaultLogo();
     $('acc-photo-label').textContent = photo ? 'Changer votre photo de profil' : 'Importer votre photo de profil';
   }
   function importPhoto() {
@@ -2722,34 +3021,36 @@
   });
 
   // ----- Mode « Sélectionner » : dupliquer, déplacer, supprimer plusieurs notes -----
-  var selNotes = [];
-  function exitSelect() { sel.on = false; sel.ids = {}; render(); }
+  function exitSelect() { sel.on = false; sel.ids = {}; sel.f = {}; render(); }
   function updateSelUI() {
-    var n = selIds().length;
+    var nn = selIds().length, nf = selFolderNames().length, n = nn + nf;
     if (!sel.on) return;
-    crumbEl.textContent = n ? plural(n, 'note sélectionnée', 'notes sélectionnées') : 'Touche des notes pour les choisir';
+    crumbEl.textContent = n ? plural(n, 'élément sélectionné', 'éléments sélectionnés') : 'Touche des notes ou des dossiers';
     crumbActions.innerHTML = '';
     var all = document.createElement('button');
     all.className = 'chip';
-    var everything = selNotes.length > 0 && n === selNotes.length;
+    var total = selNotes.length + selFolders.length;
+    var everything = total > 0 && n === total;
     all.textContent = everything ? 'Tout désélectionner' : 'Tout sélectionner';
     all.addEventListener('click', function () {
-      sel.ids = {};
-      if (!everything) selNotes.forEach(function (x) { sel.ids[x.id] = true; });
-      listEl.querySelectorAll('.card.selectable').forEach(function (c, i) { c.classList.toggle('selected', !everything); });
+      sel.ids = {}; sel.f = {};
+      if (!everything) { selNotes.forEach(function (x) { sel.ids[x.id] = true; }); selFolders.forEach(function (x) { sel.f[x] = true; }); }
+      listEl.querySelectorAll('.card.selectable, .folder-row.selectable').forEach(function (c) { c.classList.toggle('selected', !everything); });
       updateSelUI();
     });
     crumbActions.appendChild(all);
-    ['sel-dup', 'sel-move', 'sel-space', 'sel-del'].forEach(function (id) { $(id).disabled = !n; });
+    $('sel-dup').disabled = !nn;
+    $('sel-space').disabled = !nn;
+    $('sel-move').disabled = !n;
+    $('sel-del').disabled = !n;
   }
   $('pin-select').addEventListener('click', function () {
     if (sel.on) { exitSelect(); return; }
-    if (state.view === 'folders') state.view = 'notes';
-    sel.on = true; sel.ids = {};
+    sel.on = true; sel.ids = {}; sel.f = {};
     render();
   });
   $('sel-cancel').addEventListener('click', exitSelect);
-  $('sel-space').addEventListener('click', function () { moveToOtherSpace(selIds(), function () { sel.on = false; sel.ids = {}; }); });
+  $('sel-space').addEventListener('click', function () { moveToOtherSpace(selIds(), function () { sel.on = false; sel.ids = {}; sel.f = {}; }); });
   $('sel-dup').addEventListener('click', function () {
     var ids = selIds();
     if (!ids.length) return;
@@ -2764,35 +3065,168 @@
     toast(plural(k, 'note dupliquée', 'notes dupliquées'));
   });
   $('sel-del').addEventListener('click', function () {
-    var ids = selIds();
-    if (!ids.length) return;
-    confirmSheet('Supprimer ' + plural(ids.length, 'note', 'notes') + ' ?', ids.length > 1 ? 'Ces notes seront supprimées définitivement.' : 'Cette note sera supprimée définitivement.', 'Supprimer', function () {
+    var ids = selIds(), fnames = selFolderNames();
+    if (!ids.length && !fnames.length) return;
+    var parts = [];
+    if (ids.length) parts.push(plural(ids.length, 'note', 'notes'));
+    if (fnames.length) parts.push(plural(fnames.length, 'dossier', 'dossiers'));
+    var msg = fnames.length ? 'Les dossiers choisis (avec leurs sous-dossiers) sont supprimés ; les notes qu’ils contiennent sont déplacées dans « ' + DEFAULT_FOLDER + ' ».' + (ids.length ? ' Les notes choisies sont supprimées définitivement.' : '') : (ids.length > 1 ? 'Ces notes seront supprimées définitivement.' : 'Cette note sera supprimée définitivement.');
+    confirmSheet('Supprimer ' + parts.join(' et ') + ' ?', msg, 'Supprimer', function () {
       ids.forEach(recordNoteDeletion);
-      saveNotes(getNotes().filter(function (n) { return ids.indexOf(n.id) < 0; }));
+      if (ids.length) saveNotes(getNotes().filter(function (n) { return ids.indexOf(n.id) < 0; }));
+      if (fnames.length) deleteFoldersNow(fnames);
       exitSelect();
-      toast(plural(ids.length, 'note supprimée', 'notes supprimées'));
+      toast(parts.join(' et ') + ' supprimé(s)');
     });
   });
   $('sel-move').addEventListener('click', function () {
-    var ids = selIds();
-    if (!ids.length) return;
-    folderPicker('Déplacer ' + plural(ids.length, 'note', 'notes') + ' vers', null, function (name) {
+    var ids = selIds(), fnames = selFolderNames().filter(function (n) { return n !== DEFAULT_FOLDER && n !== LOCKED_FOLDER; });
+    if (!ids.length && !fnames.length) return;
+    if (!ids.length) { moveFolderSheet(fnames, function () { sel.on = false; sel.ids = {}; sel.f = {}; }); return; }
+    var fl0 = getFolders(), exclude = fnames.slice();
+    fnames.forEach(function (n) { descendants(n, fl0).forEach(function (d) { exclude.push(d); }); });
+    var label = (ids.length ? plural(ids.length, 'note', 'notes') : '') + (fnames.length ? ' et ' + plural(fnames.length, 'dossier', 'dossiers') : '');
+    folderPicker('Déplacer ' + label + ' vers', null, function (name) {
       var fl = getFolders();
       var notes = getNotes().filter(function (n) { return ids.indexOf(n.id) >= 0; });
+      var now = new Date().toISOString();
+      fnames.forEach(function (fn) {
+        var f = fl.find(function (x) { return x.name === fn; });
+        if (f && isLocked(name, fl) === isLocked(fn, fl) && (f.parent || null) !== name) { f.parent = name; f.updatedAt = now; }
+      });
+      if (fnames.length) saveFolders(fl);
       if (isLocked(name, fl)) {
         var toLock = notes.filter(function (n) { return !isLocked(n.folder, fl); }).map(function (n) { return n.id; });
         if (toLock.length) {
           var rest = ids.filter(function (id) { return toLock.indexOf(id) < 0; });
           rest.forEach(function (id) { updateNote(id, { folder: name }); });
-          lockIntoLockedFolder(toLock, name, function () { sel.on = false; sel.ids = {}; });
+          lockIntoLockedFolder(toLock, name, function () { sel.on = false; sel.ids = {}; sel.f = {}; });
           return;
         }
       }
       ids.forEach(function (id) { updateNote(id, { folder: name }); });
       exitSelect();
-      toast(plural(ids.length, 'note déplacée', 'notes déplacées') + ' dans « ' + name + ' »');
-    });
+      toast(label + ' déplacé(s) dans « ' + name + ' »');
+    }, null, exclude);
   });
+
+
+  // ----- Export / import de toutes les notes avec leur arborescence (ZIP) -----
+  function safeName(t) { return String(t || 'Sans titre').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Sans titre'; }
+  function htmlToText(html) {
+    var tmp = document.createElement('div');
+    tmp.innerHTML = String(html || '').replace(/<div class="todo" data-done="1"[^>]*>/gi, '[x] ').replace(/<div class="todo"[^>]*>/gi, '[ ] ').replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\b[^>]*>/gi, '$&\n');
+    return (tmp.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+  }
+  function exportAllZip() {
+    var te = new TextEncoder(), files = [], used = {};
+    var notes = spaceNotes().filter(function (n) { return !(n.lock && n.lock.requireOpen) && !isLocked(n.folder, getFolders()); });
+    if (!notes.length) { toast('Aucune note à exporter.'); return; }
+    notes.forEach(function (n) {
+      var dir = (n.folder && n.folder !== DEFAULT_FOLDER ? folderPath(n.folder).split(' / ').map(safeName).join('/') + '/' : '');
+      var base = dir + safeName(n.title), path = base + '.txt', k = 2;
+      while (used[path.toLowerCase()]) path = base + ' (' + (k++) + ').txt';
+      used[path.toLowerCase()] = true;
+      files.push({ name: path, data: te.encode(htmlToText(n.content) + '\n') });
+    });
+    var backup = { app: 'Noteo', version: 1, exportedAt: new Date().toISOString(), notes: notes, folders: getFolders().filter(function (f) { return inSpace(f) && f.name !== LOCKED_FOLDER && !isLocked(f.name, getFolders()); }) };
+    files.push({ name: 'noteo-sauvegarde.json', data: te.encode(JSON.stringify(backup)) });
+    downloadFile('Noteo-notes.zip', 'application/zip', zipStore(files, 'application/zip'));
+    toast(plural(notes.length, 'note exportée', 'notes exportées') + ' (dossiers conservés)');
+  }
+  async function inflateRaw(data) {
+    var stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  async function readZip(buf) {
+    var u8 = new Uint8Array(buf), dv = new DataView(buf), out = [];
+    var eocd = -1;
+    for (var i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) { if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; } }
+    if (eocd < 0) throw new Error('zip');
+    var count = dv.getUint16(eocd + 10, true), p = dv.getUint32(eocd + 16, true);
+    for (var k = 0; k < count; k++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      var method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nlen = dv.getUint16(p + 28, true), xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+      var name = new TextDecoder('utf-8').decode(u8.subarray(p + 46, p + 46 + nlen));
+      p += 46 + nlen + xlen + clen;
+      if (/\/$/.test(name)) continue;
+      var lnlen = dv.getUint16(off + 26, true), lxlen = dv.getUint16(off + 28, true), start = off + 30 + lnlen + lxlen;
+      var raw = u8.subarray(start, start + csize);
+      var data = method === 0 ? raw : (method === 8 ? await inflateRaw(raw) : null);
+      if (data) out.push({ name: name, data: data });
+    }
+    return out;
+  }
+  function textToHtml(t) {
+    return String(t).replace(/\r\n?/g, '\n').split('\n').map(function (l) {
+      var m = /^\s*(?:[-*]\s)?\[( |x|X)\]\s?(.*)$/.exec(l);
+      if (m) return '<div class="todo" data-done="' + (m[1] === ' ' ? '0' : '1') + '">' + (escHtml(m[2]) || '<br>') + '</div>';
+      return '<div>' + (escHtml(l) || '<br>') + '</div>';
+    }).join('');
+  }
+  function ensureFolderPath(parts) {
+    var folders = getFolders(), parent = null, now = new Date().toISOString(), made = false;
+    parts.forEach(function (seg) {
+      seg = seg.trim().slice(0, 60);
+      if (!seg || seg === DEFAULT_FOLDER && !parent) { parent = seg ? DEFAULT_FOLDER : parent; return; }
+      var ex = folders.find(function (f) { return fLabel(f).toLowerCase() === seg.toLowerCase() && (f.parent || null) === parent && inSpace(f); });
+      if (!ex) {
+        var nm = seg, k = 2;
+        while (folders.some(function (f) { return f.name.toLowerCase() === nm.toLowerCase(); }) || nm === LOCKED_FOLDER) nm = seg + ' (' + (k++) + ')';
+        ex = { name: nm, parent: parent, space: curSpace(), createdAt: now, updatedAt: now };
+        if (nm !== seg) ex.label = seg;
+        folders.push(ex); clearFolderTombstone(nm); made = true;
+      }
+      parent = ex.name;
+    });
+    if (made) saveFolders(folders);
+    return parent || DEFAULT_FOLDER;
+  }
+  async function importFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList || []);
+    if (!files.length) return;
+    var entries = [];
+    try {
+      for (var i = 0; i < files.length; i++) {
+        var f = files[i];
+        if (/\.zip$/i.test(f.name)) (await readZip(await f.arrayBuffer())).forEach(function (e) { entries.push(e); });
+        else entries.push({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) });
+      }
+    } catch (e) { toast('Ce fichier ZIP n’a pas pu être lu.'); return; }
+    var dec = new TextDecoder('utf-8');
+    var backupEntry = entries.find(function (e) { return /(^|\/)noteo-sauvegarde\.json$/i.test(e.name); });
+    var list = getNotes(), added = 0, now = new Date().toISOString(), base = Date.now();
+    if (backupEntry) {   // sauvegarde Noteo : on retrouve tout à l'identique (mise en forme, dossiers)
+      try {
+        var j = JSON.parse(dec.decode(backupEntry.data));
+        var fl = (j.folders || []).map(function (f) { return Object.assign({}, f, { space: curSpace() }); });
+        var m = mergeState(getNotes(), getFolders(), (j.notes || []).map(function (n) { return Object.assign({}, n, { space: curSpace() }); }), fl, getTomb(), emptyTomb());
+        write('noteo-notes', JSON.stringify(m.notes)); write('noteo-folders', JSON.stringify(m.folders)); saveTomb(m.tombstones);
+        onDataChanged();
+        render();
+        toast(plural((j.notes || []).length, 'note importée', 'notes importées'));
+        return;
+      } catch (e) { /* on retombe sur l'import des fichiers texte */ }
+    }
+    function toB64(u8) { var b = '', k; for (k = 0; k < u8.length; k += 8192) b += String.fromCharCode.apply(null, u8.subarray(k, k + 8192)); return btoa(b); }
+    entries.forEach(function (e) {
+      var m = /^(.*?)([^\/]+)\.(txt|md|markdown|html?|png|jpe?g|webp|gif)$/i.exec(e.name.replace(/\\/g, '/'));
+      if (!m) return;
+      var dirs = m[1].split('/').filter(Boolean), title = m[2], ext = m[3].toLowerCase();
+      var isImg = /^(png|jpe?g|webp|gif)$/.test(ext);
+      var txt = isImg ? '' : dec.decode(e.data);
+      var html = isImg ? '<div><img src="data:image/' + (ext === 'jpg' ? 'jpeg' : ext) + ';base64,' + toB64(e.data) + '" alt=""></div>' : (/^html?$/.test(ext) ? cleanHtml((/<body[^>]*>([\s\S]*)<\/body>/i.exec(txt) || [0, txt])[1]) : textToHtml(txt));
+      list.push({ id: String(base + added), title: title.slice(0, 200), content: html, folder: ensureFolderPath(dirs), favorite: false, createdAt: now, updatedAt: now, space: curSpace() });
+      added++;
+    });
+    if (!added) { toast('Aucune note trouvée (formats lus : .txt, .md, .html, images, ou un ZIP avec dossiers).'); return; }
+    saveNotes(list);
+    render();
+    toast(plural(added, 'note importée', 'notes importées') + ', dossiers conservés');
+  }
+  $('acc-btn-export').addEventListener('click', exportAllZip);
+  $('acc-btn-import').addEventListener('click', function () { $('acc-import-file').click(); });
+  $('acc-import-file').addEventListener('change', function () { var fl = this.files; importFiles(fl).then(function () { $('acc-import-file').value = ''; }); });
 
   // ----- Déconnexion : retour à l'écran de connexion -----
   async function logout(forgetEmail) {
@@ -2806,7 +3240,7 @@
     sdel('noteo-pin-unlocked');
     sdel('noteo-locked-open');
     sdel('noteo-space');
-    sel.on = false; sel.ids = {};
+    sel.on = false; sel.ids = {}; sel.f = {};
     closeSheet();
     editorEl.hidden = true;
     accountEl.hidden = true;
@@ -2925,7 +3359,7 @@
     for (var i = 0; i < bytes.length; i++) crc = crc32.t[(crc ^ bytes[i]) & 255] ^ (crc >>> 8);
     return (crc ^ -1) >>> 0;
   }
-  function zipStore(files) {
+  function zipStore(files, mime) {
     var te = new TextEncoder(), parts = [], central = [], offset = 0, cdSize = 0;
     files.forEach(function (f) {
       var name = te.encode(f.name), crc = crc32(f.data), size = f.data.length;
@@ -2943,7 +3377,7 @@
     var end = new DataView(new ArrayBuffer(22));
     end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
     end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
-    return new Blob(parts.concat(central, [new Uint8Array(end.buffer)]), { type: 'application/vnd.oasis.opendocument.text' });
+    return new Blob(parts.concat(central, [new Uint8Array(end.buffer)]), { type: mime || 'application/vnd.oasis.opendocument.text' });
   }
   function xmlEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function odfParagraphs(html) {
@@ -3631,6 +4065,7 @@
     var v = $('acc-theme').value;
     document.documentElement.setAttribute('data-theme', v);
     write('noteo-theme', v);
+    refreshPhoto();
   });
   $('acc-username').addEventListener('input', function () { write('noteo-username', $('acc-username').value.trim()); });
   $('acc-display').addEventListener('input', function () { write('noteo-display-name', $('acc-display').value.trim()); touchProfileField('displayName'); });
@@ -3666,7 +4101,13 @@
       (many ? 'Les notes disparaîtront' : 'La note disparaîtra') + ' de cet espace et ' + (many ? 'apparaîtront' : 'apparaîtra') + ' dans Noteo sur ' + (target === 'pc' ? 'ordinateur' : 'téléphone') + ' (même compte en ligne). Tu pourras ' + (many ? 'les' : 'la') + ' ramener depuis l’autre espace.',
       'Déplacer', async function () {
         if (ed && ids.indexOf(ed.id) >= 0) await persistCurrent();
-        ids.forEach(function (id) { updateNote(id, { space: target }); });
+        var fl = getFolders();
+        ids.forEach(function (id) {
+          var nt = getNotes().find(function (x) { return x.id === id; });
+          var fo = nt && fl.find(function (f) { return f.name === nt.folder; });
+          // un dossier propre à un espace n'existe pas dans l'autre : la note arrive dans « Sans catégorie »
+          updateNote(id, (fo && fo.space && fo.space !== target) ? { space: target, folder: DEFAULT_FOLDER } : { space: target });
+        });
         if (currentId && ids.indexOf(currentId) >= 0 && ed) closeEditor(true);
         if (after) after();
         render();
@@ -3677,7 +4118,7 @@
   function setSpace(sp) {
     if (sp === 'pc' && accountType() !== 'online') { needOnlineSheet('voir l’espace ordinateur'); return; }
     try { sessionStorage.setItem('noteo-space', sp); } catch (e) { /* ignoré */ }
-    sel.on = false; sel.ids = {};
+    sel.on = false; sel.ids = {}; sel.f = {};
     state.view = 'notes'; state.folder = ALL; state.browse = null; state.query = ''; searchEl.value = '';
     render();
     if (sp === 'pc') syncOnlineNow(true).catch(function () {});
@@ -3691,6 +4132,7 @@
   });
 
   // Thème mémorisé (même clé que sur PC)
+  try { if (window.matchMedia) matchMedia('(prefers-color-scheme: light)').addEventListener('change', function () { refreshPhoto(); }); } catch (e) { /* ignoré */ }
   var savedTheme = read('noteo-theme');
   if (savedTheme === 'light' || savedTheme === 'dark') document.documentElement.setAttribute('data-theme', savedTheme);
 
@@ -3698,6 +4140,39 @@
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.__NOTEO_PREVIEW__) {
     navigator.serviceWorker.register('sw.js').catch(function () { /* non bloquant */ });
   }
+
+  // ----- Geste « retour » : revient d'un niveau au lieu de fermer l'appli -----
+  var lastBackPress = 0;
+  function handleBack() {
+    if (!loginGate.hidden || !pinGate.hidden) return false;
+    if (scrim) { closeSheet(); return true; }
+    if (!editorEl.hidden) { closeEditor(); return true; }
+    if (!accountEl.hidden) { closeAccount(); return true; }
+    if (sel.on) { exitSelect(); return true; }
+    if (state.view === 'folders') {
+      if (state.query) { state.query = ''; searchEl.value = ''; } else state.view = 'notes';
+      render(); return true;
+    }
+    if (state.query) { state.query = ''; searchEl.value = ''; render(); return true; }
+    if (state.view === 'notes' && state.folder !== ALL) {
+      var p = state.folder === FAVORITES ? null : parentOf(state.folder);
+      state.folder = p || ALL; render(); return true;
+    }
+    if (curSpace() === 'pc') { setSpace('phone'); return true; }
+    return false;
+  }
+  function pushGuard() { try { history.pushState({ noteo: 'guard' }, ''); } catch (e) { /* ignoré */ } }
+  try { history.replaceState({ noteo: 'base' }, ''); pushGuard(); } catch (e) { /* ignoré */ }
+  window.addEventListener('popstate', function () {
+    if (handleBack()) { pushGuard(); return; }
+    var now = Date.now();
+    var P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (now - lastBackPress < 2000) { if (P && P.exitApp) P.exitApp(); else { try { history.back(); } catch (e) { /* ignoré */ } } return; }
+    lastBackPress = now;
+    toast('Appuie encore une fois pour quitter');
+    pushGuard();
+  });
+
 
   startGates();
   render();

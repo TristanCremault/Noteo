@@ -22,7 +22,7 @@
     <header class="top">
       <div class="top-row">
         <h1 class="brand">Note<span>o</span></h1>
-        <button id="btn-logo" class="logo-btn" aria-label="Espace compte"><img src="icons/logo-small.png" alt=""></button>
+        <button id="btn-logo" class="logo-btn" aria-label="Espace compte"><img src="icons/logo-small.png" data-light-src="icons/logo-small-light.png" alt=""></button>
       </div>
       <input id="search" class="search" type="search" placeholder="Rechercher dans Noteo" autocomplete="off" enterkeyhint="search">
       <p id="space-banner" class="space-banner" hidden></p>
@@ -90,6 +90,7 @@
           <button data-act="bold" data-edit="1" aria-label="Gras"><b>G</b></button>
           <button data-act="italic" data-edit="1" aria-label="Italique"><i>I</i></button>
           <button data-act="underline" data-edit="1" aria-label="Souligné"><u>S</u></button>
+          <button data-act="todo" data-edit="1" aria-label="Liste à cocher">☑</button>
           <button data-act="highlight" data-edit="1" aria-label="Surligner">🖍</button>
           <button data-act="color" data-edit="1" aria-label="Couleur du texte"><span class="acolor">A</span></button>
         </div>
@@ -148,6 +149,9 @@
 
         <section class="acc-stack">
           <button class="acc-btn" id="acc-btn-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-1-.8-1.4-.8-2.3 0-.9.7-1.5 1.7-1.5H17a4 4 0 0 0 4-4C21 7 17 3 12 3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7.5" r="1"/><circle cx="14.5" cy="7.5" r="1"/></svg><span>Fond de l’application</span></button>
+          <button class="acc-btn" id="acc-btn-export"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg><span>Exporter toutes mes notes<small>fichier ZIP, dossiers et sous-dossiers conservés</small></span></button>
+          <button class="acc-btn" id="acc-btn-import"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4 4 4M5 19h14"/></svg><span>Importer des notes<small>ZIP avec dossiers, fichiers texte (.txt, .md, .html) ou images</small></span></button>
+          <input type="file" id="acc-import-file" accept=".zip,.txt,.md,.markdown,.html,.htm,.png,.jpg,.jpeg,.webp,.gif,image/*,application/zip,text/plain" multiple hidden>
           <button class="acc-btn" id="acc-btn-lockpass"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="m11 11 8-8M16 6l3 3M14 8l2 2"/></svg><span>Changer le mot de passe du dossier verrouillé<small>par défaut : 000000</small></span></button>
           <button class="acc-btn" id="acc-btn-pass" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="m11 11 8-8M16 6l3 3M14 8l2 2"/></svg><span>Changer le mot de passe du compte</span></button>
         </section>

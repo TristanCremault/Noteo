@@ -79,7 +79,7 @@ function folderPath(folders, name) {
   let current = map[name];
 
   while (current && !seen.has(current.name)) {
-    parts.unshift(current.name);
+    parts.unshift(current.label || current.name);
     seen.add(current.name);
     current = current.parent ? map[current.parent] : null;
   }
@@ -377,7 +377,7 @@ function renderFolders() {
   // Mode normal : on ne montre pas les dossiers verrouillés. Mode verrouillé : uniquement leur arborescence.
   const allFolders = getFolders();
   const lockedMode = isLockedFolderName(activeFolder, allFolders);
-  const folders = allFolders.filter((f) => isLockedFolderName(f.name, allFolders) === lockedMode);
+  const folders = allFolders.filter((f) => folderInMySpace(f) && isLockedFolderName(f.name, allFolders) === lockedMode);
   folderList.innerHTML = "";
 
   if (folderFilter.trim() !== "") {
@@ -390,7 +390,7 @@ function renderFolders() {
   }
 
   // Pas de recherche : arborescence complète, dossiers racine puis leurs enfants
-  const roots = folders.filter((f) => !f.parent || !folders.some((p) => p.name === f.parent));
+  const roots = orderedFolders(folders.filter((f) => !f.parent || !folders.some((p) => p.name === f.parent)));
   roots.forEach((f) => appendFolderTree(f, 0, folders));
 }
 
@@ -399,10 +399,10 @@ function appendFolderTree(folder, depth, allFolders, visited) {
   if (visited.has(folder.name)) return; // protège d'une éventuelle boucle parent <-> enfant
   visited.add(folder.name);
 
-  const children = allFolders.filter((f) => f.parent === folder.name);
+  const children = orderedFolders(allFolders.filter((f) => f.parent === folder.name));
   const isCollapsed = getCollapsedFolders().has(folder.name);
 
-  folderList.appendChild(buildFolderLi(folder, depth, allFolders, folder.name, { hasChildren: children.length > 0, isCollapsed, tree: true }));
+  folderList.appendChild(buildFolderLi(folder, depth, allFolders, folder.label || folder.name, { hasChildren: children.length > 0, isCollapsed, tree: true }));
 
   if (!isCollapsed) {
     children.forEach((child) => appendFolderTree(child, depth + 1, allFolders, visited));
@@ -529,6 +529,11 @@ function stripHtml(html) {
 
 // Espaces : chaque note appartient à l'espace 'pc' ou 'phone'. Les notes sans espace (anciennes) restent visibles partout.
 const MY_SPACE = 'pc';
+// Un dossier créé sur le téléphone (space: 'phone') n'apparaît pas ici ; les anciens dossiers sans espace restent communs.
+function folderInMySpace(f) { return !f.space || f.space === MY_SPACE; }
+function orderedFolders(list) {
+  return list.map((f, i) => ({ f, i, p: typeof f.pos === 'number' ? f.pos : i * 10 })).sort((a, b) => (a.p - b.p) || (a.i - b.i)).map((x) => x.f);
+}
 
 function renderNotes() {
   let notes = getNotes().filter((n) => !n.space || n.space === MY_SPACE);
@@ -615,7 +620,7 @@ function renderNotes() {
 
     const allFoldersForMove = getFolders();
     const noteIsLocked = isLockedFolderName(note.folder, allFoldersForMove);
-    allFoldersForMove.filter((f) => isLockedFolderName(f.name, allFoldersForMove) === noteIsLocked).forEach((f) => {
+    allFoldersForMove.filter((f) => folderInMySpace(f) && isLockedFolderName(f.name, allFoldersForMove) === noteIsLocked).forEach((f) => {
       const b = document.createElement('button');
       b.textContent = folderPath(allFoldersForMove, f.name);
       b.addEventListener('click', (e) => {
@@ -676,6 +681,8 @@ function renderNotes() {
       const notes2 = getNotes();
       const idx = notes2.findIndex((n) => n.id === note.id);
       if (idx >= 0) {
+        const fo = getFolders().find((x) => x.name === notes2[idx].folder);
+        if (fo && fo.space === 'pc') notes2[idx].folder = "Sans catégorie"; // ce dossier n'existe pas sur le téléphone
         notes2[idx].space = 'phone';
         notes2[idx].updatedAt = new Date().toISOString(); // sinon le changement ne se synchronise pas
         saveNotes(notes2);
@@ -1483,14 +1490,19 @@ function confirmNewFolder() {
   const name = newFolderInput.value.trim();
   if (name !== "") {
     const folders = getFolders();
-    if (folders.some((f) => f.name === name)) {
-      noteoAlert('Un dossier "' + name + '" existe déjà.');
-      return; // on laisse le formulaire ouvert pour corriger le nom
-    }
-    if (typeof clearFolderTombstone === 'function') clearFolderTombstone(name);
     // En mode verrouillé, un nouveau dossier racine est créé DANS le dossier verrouillé
     const parentForNew = pendingFolderParent || (isLockedFolderName(activeFolder, folders) ? LOCKED_FOLDER : null);
-    folders.push({ name: name, parent: parentForNew, createdAt: new Date().toISOString() });
+    const lowName = name.toLowerCase();
+    if ((!parentForNew && name === LOCKED_FOLDER) || folders.some((f) => (f.parent || null) === (parentForNew || null) && (!f.space || f.space === 'pc') && (f.label || f.name).toLowerCase() === lowName)) {
+      noteoAlert('Un dossier "' + name + '" existe déjà ici.');
+      return;
+    }
+    // Deux dossiers peuvent porter le même nom s'ils ne sont pas au même endroit : le nom interne reste unique, le nom affiché (label) est celui choisi
+    let internalName = name, suffix = 2;
+    while (folders.some((f) => f.name.toLowerCase() === internalName.toLowerCase()) || internalName === LOCKED_FOLDER) internalName = name + ' (' + (suffix++) + ')';
+    const labelPart = internalName !== name ? { label: name } : {};
+    if (typeof clearFolderTombstone === 'function') clearFolderTombstone(internalName);
+    folders.push(Object.assign({ name: internalName, parent: parentForNew, space: MY_SPACE, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, labelPart));
     saveFolders(folders);
     renderFolders();
   }
