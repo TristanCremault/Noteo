@@ -82,6 +82,10 @@
             <input type="checkbox" id="account-pin-enabled">
             Demander un code PIN à l'ouverture de Noteo
           </label>
+          <label class="checkbox-line">
+            <input type="checkbox" id="account-anim">
+            Animations de transition (ouverture des pages, notes, fenêtres)
+          </label>
           <div class="account-btn-pair">
             <button id="btn-set-app-pin" class="account-option-btn">🔑 Définir le code PIN</button>
             <button id="btn-phone-version" class="account-option-btn" type="button" title="Ouvrir la version téléphone de Noteo (clic droit : changer l'adresse)">📱 Version téléphone</button>
@@ -311,6 +315,7 @@
     </div>
   </div>
 
+  <script src="JS/reglages.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="JS/supabase-config.js"></script>
   <script src="JS/sync.js"></script>
