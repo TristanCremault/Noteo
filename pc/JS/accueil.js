@@ -652,7 +652,7 @@ function renderNotes() {
 
     const preview = document.createElement('p');
     const isOpenLocked = !!(note.lock && note.lock.requireOpen);
-    preview.textContent = note.hidden ? "Contenu masqué" : (isOpenLocked ? "🔒 Contenu protégé" : stripHtml(note.content));
+    preview.textContent = note.hidden ? "Contenu masqué" : (isOpenLocked ? "🔒 Contenu protégé" : stripHtml(String(note.content || '').replace(/<div class="todo" data-done="1"[^>]*>/gi, '☑ ').replace(/<div class="todo"[^>]*>/gi, '☐ ')));
 
     const meta = document.createElement('p');
     meta.style.marginTop = "6px";
@@ -958,6 +958,7 @@ btnAccount.addEventListener('click', () => {
 
 const btnLogout = document.getElementById('btn-logout');
 btnLogout.addEventListener('click', async () => {
+  try { localStorage.removeItem('noteo-stay-signed-in'); if (window.api && window.api.stayClear) await window.api.stayClear(); } catch (err) { /* ignoré */ }
   if (getAccountType() === 'online' && typeof onlineSignOut === 'function') {
     await onlineSignOut();
   }
@@ -1417,6 +1418,8 @@ btnAppPinLogout.addEventListener('click', async () => {
   try { if (typeof onlineSignOut === 'function') await onlineSignOut(); } catch (err) { /* ignoré */ }
   if (typeof clearOnlinePinVault === 'function') clearOnlinePinVault();
   localStorage.removeItem('noteo-remembered-email');
+  localStorage.removeItem('noteo-stay-signed-in');
+  if (window.api && window.api.stayClear) window.api.stayClear();
   sessionStorage.removeItem('noteo-login-unlocked');
   sessionStorage.removeItem('noteo-pin-unlocked');
   pinGateMode = 'normal';
@@ -1536,9 +1539,25 @@ async function applyFirstRunSetup() {
   const type = getAccountType();
   const pinEnabled = localStorage.getItem('noteo-app-pin-enabled') === 'true';
   const alreadyLoggedIn = sessionStorage.getItem('noteo-login-unlocked') === 'true';
-  const vaultAvailable = type === 'online' && pinEnabled && !alreadyLoggedIn && getOnlinePinVault();
+  // « Rester connecté » : identifiants gardés (chiffrés par Windows) → connexion automatique
+  let stayCreds = null;
+  if (!alreadyLoggedIn && (type === 'local' || type === 'online') && localStorage.getItem('noteo-stay-signed-in') === 'true' && window.api && window.api.stayLoad) {
+    try { stayCreds = await window.api.stayLoad(); } catch (err) { stayCreds = null; }
+    if (stayCreds && stayCreds.type !== type) stayCreds = null;
+  }
+  const vaultAvailable = !stayCreds && type === 'online' && pinEnabled && !alreadyLoggedIn && getOnlinePinVault();
 
-  if (vaultAvailable) {
+  if (stayCreds) {
+    checkLoginGate();
+    loginUsernameInput.value = stayCreds.username || '';
+    loginPasswordInput.value = stayCreds.password || '';
+    await attemptLogin();
+    loginPasswordInput.value = '';
+    if (sessionStorage.getItem('noteo-login-unlocked') !== 'true') {
+      // La connexion automatique a échoué (mot de passe changé, pas de réseau…) : on garde l'écran de connexion normal
+      loginError.classList.remove('hidden');
+    }
+  } else if (vaultAvailable) {
     showVaultPinGate();
   } else if (!checkLoginGate()) {
     checkAppPinGate();

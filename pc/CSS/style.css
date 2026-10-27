@@ -1021,3 +1021,5 @@ input[type="search"]:focus {
 html:not(.no-anim) .note-app, html:not(.no-anim) .main { animation: noteoPageIn .22s ease-out; }
 html:not(.no-anim) .note-card { animation: noteoItemIn .2s ease-out; }
 html:not(.no-anim) .modal-content { animation: noteoPageIn .18s ease-out; }
+
+.account-hint { font-size: 12px; opacity: .7; margin: 4px 0 0; }

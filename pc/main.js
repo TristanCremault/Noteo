@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage, dialog, Menu, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, nativeImage, dialog, Menu, clipboard, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -14,6 +14,8 @@ function requirePdfParse() { return require('pdf-parse'); }
 // ensemble simple de balises), mais ça suffit pour les notes de Noteo.
 function htmlToParagraphs(html) {
   const blocks = (html || '')
+    .replace(/<div class="todo" data-done="1"[^>]*>/gi, '[x] ')
+    .replace(/<div class="todo"[^>]*>/gi, '[ ] ')
     .replace(/<\/(p|div|li|h[1-6])>/gi, '\u0001')
     .replace(/<br\s*\/?>/gi, '\n')
     .split('\u0001');
@@ -415,6 +417,26 @@ ipcMain.handle('open-phone-window', async (event, url) => {
 
 // Sauvegarde de secours d'un compte local/en ligne (notes, dossiers, identifiants),
 // stockée hors du dossier userData pour survivre à une désinstallation de Noteo.
+// « Rester connecté » : les identifiants sont chiffrés par Windows (lié à ta session Windows) et gardés sur cet ordinateur.
+const stayFile = path.join(app.getPath('userData'), 'stay-signed-in.bin');
+ipcMain.handle('stay-save', async (event, data) => {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return false;
+    fs.writeFileSync(stayFile, safeStorage.encryptString(JSON.stringify(data)));
+    return true;
+  } catch (err) { return false; }
+});
+ipcMain.handle('stay-load', async () => {
+  try {
+    if (!fs.existsSync(stayFile) || !safeStorage.isEncryptionAvailable()) return null;
+    return JSON.parse(safeStorage.decryptString(fs.readFileSync(stayFile)));
+  } catch (err) { return null; }
+});
+ipcMain.handle('stay-clear', async () => {
+  try { if (fs.existsSync(stayFile)) fs.unlinkSync(stayFile); } catch (err) { /* ignoré */ }
+  return true;
+});
+
 ipcMain.handle('save-account-backup', async (event, data) => {
   try {
     ensureExternalDataDir();
@@ -476,6 +498,8 @@ ipcMain.handle('export-note', async (event, { title, htmlContent }) => {
       fs.writeFileSync(result.filePath, buffer);
     } else if (lower.endsWith('.txt')) {
       const output = htmlContent
+        .replace(/<div class="todo" data-done="1"[^>]*>/gi, '[x] ')
+        .replace(/<div class="todo"[^>]*>/gi, '[ ] ')
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
         .replace(/<[^>]+>/g, '')

@@ -808,54 +808,53 @@
     });
   }
 
-  // Sélecteur de dossier avec navigation : on entre dans un dossier avec « › », on le choisit en touchant son nom
+  // Sélecteur de dossier en arborescence : « ▸ » déplie les sous-dossiers, on choisit en touchant le nom, « ＋ » crée un sous-dossier dedans
   function folderPicker(title, current, onPick, extra, exclude) {
     exclude = exclude || [];
-    var parent = parentOf(current);
-    var all0 = visibleFolders().filter(function (f) { return exclude.indexOf(f.name) < 0; });
-    if (parent && !all0.some(function (f) { return f.name === parent; })) parent = null;
+    var open = {};
+    (function () { var c = parentOf(current), g = 0; while (c && g++ < 30) { open[c] = true; c = parentOf(c); } })();
     openSheet(function (sheet) {
       function draw() {
+        var top = sheet.scrollTop;
         sheet.innerHTML = '';
         heading(sheet, title);
         var all = visibleFolders().filter(function (f) { return exclude.indexOf(f.name) < 0; });
-        var where = document.createElement('p');
-        where.className = 'hint';
-        where.textContent = parent ? 'Dans : ' + folderPath(parent) : 'Dossiers';
-        sheet.appendChild(where);
-        if (parent) {
-          opt(sheet, '← Dossier précédent', '', function () { parent = parentOf(parent); draw(); });
-          opt(sheet, 'Choisir « ' + labelOf(parent) + ' »', parent === current ? 'sel' : '', function () { closeSheet(); onPick(parent); });
+        var seen = {};
+        function addRows(parent, depth) {
+          var list = orderFolders(all.filter(function (f) { return parent ? f.parent === parent : (!f.parent || !all.some(function (p) { return p.name === f.parent; })); }));
+          list.forEach(function (f) {
+            if (seen[f.name]) return; seen[f.name] = true;
+            var kids = all.some(function (x) { return x.parent === f.name; });
+            var row = document.createElement('div');
+            row.className = 'pick-row';
+            row.style.paddingLeft = (depth * 16) + 'px';
+            var tog = document.createElement('button');
+            tog.className = 'pick-into';
+            tog.setAttribute('aria-label', (open[f.name] ? 'Replier ' : 'Déplier ') + fLabel(f));
+            tog.textContent = kids ? (open[f.name] ? '▾' : '▸') : '';
+            tog.disabled = !kids;
+            tog.addEventListener('click', function () { open[f.name] = !open[f.name]; draw(); });
+            row.appendChild(tog);
+            var main = document.createElement('button');
+            main.className = 'opt pick-main' + (f.name === current ? ' sel' : '');
+            main.innerHTML = '<span class="folder-ico">' + ICON_FOLDER + '</span><span class="pick-name"></span>';
+            main.querySelector('.pick-name').textContent = fLabel(f);
+            main.addEventListener('click', function () { closeSheet(); onPick(f.name); });
+            row.appendChild(main);
+            var plus = document.createElement('button');
+            plus.className = 'pick-into';
+            plus.setAttribute('aria-label', 'Nouveau sous-dossier dans ' + fLabel(f));
+            plus.textContent = '＋';
+            plus.addEventListener('click', function () { newFolderSheet(f.name, function (nm) { onPick(nm); }); });
+            row.appendChild(plus);
+            sheet.appendChild(row);
+            if (kids && open[f.name]) addRows(f.name, depth + 1);
+          });
         }
-        var list = orderFolders(all.filter(function (f) { return parent ? f.parent === parent : (!f.parent || !all.some(function (p) { return p.name === f.parent; })); }));
-        list.forEach(function (f) {
-          var kids = all.some(function (x) { return x.parent === f.name; });
-          var row = document.createElement('div');
-          row.className = 'pick-row';
-          var main = document.createElement('button');
-          main.className = 'opt pick-main' + (f.name === current ? ' sel' : '');
-          main.innerHTML = '<span class="folder-ico">' + ICON_FOLDER + '</span><span class="pick-name"></span>';
-          main.querySelector('.pick-name').textContent = fLabel(f);
-          main.addEventListener('click', function () { closeSheet(); onPick(f.name); });
-          row.appendChild(main);
-          if (kids) {
-            var into = document.createElement('button');
-            into.className = 'pick-into';
-            into.setAttribute('aria-label', 'Ouvrir ' + fLabel(f));
-            into.textContent = '›';
-            into.addEventListener('click', function () { parent = f.name; draw(); });
-            row.appendChild(into);
-          }
-          sheet.appendChild(row);
-        });
-        if (!list.length && parent) {
-          var none = document.createElement('p');
-          none.className = 'hint';
-          none.textContent = 'Pas de sous-dossier ici.';
-          sheet.appendChild(none);
-        }
-        opt(sheet, parent ? '＋ Nouveau sous-dossier ici' : '＋ Nouveau dossier', '', function () { newFolderSheet(parent || null, function (nm) { onPick(nm); }); });
+        addRows(null, 0);
+        opt(sheet, '＋ Nouveau dossier', '', function () { newFolderSheet(null, function (nm) { onPick(nm); }); });
         if (extra) opt(sheet, extra.label, '', extra.fn);
+        sheet.scrollTop = top;
       }
       draw();
     });
@@ -4317,6 +4316,14 @@ function fixLowContrastText(root) {
     toast('Appuie encore une fois pour quitter');
     if (viaHistory) pushGuard();
   }
+  window.__noteoBack = function () {   // appelé par l'activité Android (bouton / geste retour)
+    if (handleBack()) return 'handled';
+    var now = Date.now();
+    if (now - lastBackPress < 2000) return 'exit';
+    lastBackPress = now;
+    toast('Appuie encore une fois pour quitter');
+    return 'handled';
+  };
   var guarded = false, lastNativeBack = 0;
   function pushGuard() { try { history.pushState({ noteo: 'guard' }, ''); guarded = true; } catch (e) { /* ignoré */ } }
   try {

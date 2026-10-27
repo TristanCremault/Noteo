@@ -77,11 +77,24 @@
         </div>
 
         <div class="account-field-box">
+          <label>Échanger des notes</label>
+          <div class="account-btn-pair">
+            <button id="btn-export-zip" class="account-option-btn" type="button" title="Toutes tes notes avec leurs dossiers et sous-dossiers">📦 Exporter toutes mes notes (ZIP)</button>
+            <button id="btn-import-zip" class="account-option-btn" type="button" title="ZIP avec dossiers, fichiers .txt, .md, .html ou images">📥 Importer des notes</button>
+          </div>
+        </div>
+
+        <div class="account-field-box">
           <label>Sécurité de l'application</label>
           <label class="checkbox-line">
             <input type="checkbox" id="account-pin-enabled">
             Demander un code PIN à l'ouverture de Noteo
           </label>
+          <label class="checkbox-line">
+            <input type="checkbox" id="account-stay">
+            Rester connecté sur cet ordinateur (plus besoin de retaper le mot de passe)
+          </label>
+          <p id="account-stay-note" class="account-hint hidden"></p>
           <label class="checkbox-line">
             <input type="checkbox" id="account-anim">
             Animations de transition (ouverture des pages, notes, fenêtres)

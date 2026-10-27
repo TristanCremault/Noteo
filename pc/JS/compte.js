@@ -1220,6 +1220,8 @@ btnDeleteAccount.addEventListener('click', async () => {
     localStorage.removeItem('noteo-online-salt-cache');
     localStorage.removeItem('noteo-tombstones');
     localStorage.removeItem('noteo-remembered-email');
+    localStorage.removeItem('noteo-stay-signed-in');
+    if (window.api && window.api.stayClear) window.api.stayClear();
     localStorage.setItem(ACCOUNT_TYPE_KEY, 'none');
     sessionStorage.removeItem('noteo-login-unlocked');
     deleteAccountBackup();

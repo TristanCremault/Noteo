@@ -248,15 +248,27 @@ async function noteoImportFiles(fileList) {
   await noteoAlert(added + ' note(s) importée(s), dossiers conservés.');
 }
 
-(function wireTools() {
-  const bottom = document.querySelector('.sidebar-bottom');
-  if (!bottom) return;
-  const bExp = document.createElement('button'); bExp.id = 'btn-export-zip'; bExp.textContent = '📦 Exporter tout (ZIP)';
-  bExp.title = 'Toutes tes notes avec leurs dossiers'; bExp.addEventListener('click', noteoExportZip);
-  const bImp = document.createElement('button'); bImp.id = 'btn-import-zip'; bImp.textContent = '📥 Importer des notes';
-  bImp.title = 'Fichiers .txt, .md, .html, images, ou un ZIP avec dossiers';
-  const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.hidden = true; inp.accept = '.zip,.txt,.md,.markdown,.html,.htm,.png,.jpg,.jpeg,.webp,.gif';
-  bImp.addEventListener('click', () => inp.click());
-  inp.addEventListener('change', () => { noteoImportFiles(inp.files).then(() => { inp.value = ''; }); });
-  bottom.insertBefore(bExp, bottom.firstChild); bottom.insertBefore(bImp, bottom.firstChild); bottom.appendChild(inp);
+// Export / import : lancés depuis « Mon compte » (compte.html ouvre cette page avec ?outil=export ou ?outil=import)
+(function runRequestedTool() {
+  let tool = null;
+  try { tool = new URLSearchParams(location.search).get('outil'); } catch (e) { return; }
+  if (!tool) return;
+  try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignoré */ }
+  setTimeout(() => {
+    if (tool === 'export') { noteoExportZip(); return; }
+    if (tool === 'import') {
+      noteoModal((body, footer, close) => {
+        const p = document.createElement('p'); p.style.fontSize = '14px'; p.style.lineHeight = '1.5';
+        p.textContent = 'Choisis un ZIP exporté depuis Noteo, ou des fichiers .txt, .md, .html, images. Les dossiers du ZIP sont recréés.';
+        body.appendChild(p);
+        const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.hidden = true;
+        inp.accept = '.zip,.txt,.md,.markdown,.html,.htm,.png,.jpg,.jpeg,.webp,.gif';
+        const pick = document.createElement('button'); pick.className = 'dialog-ok'; pick.textContent = 'Choisir les fichiers…';
+        pick.onclick = () => inp.click();
+        inp.addEventListener('change', () => { const f = Array.from(inp.files); close(true); noteoImportFiles(f); });
+        const cancel = document.createElement('button'); cancel.textContent = 'Annuler'; cancel.onclick = () => close(null);
+        footer.appendChild(cancel); footer.appendChild(pick); body.appendChild(inp);
+      });
+    }
+  }, 400);
 })();
