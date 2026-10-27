@@ -408,10 +408,32 @@ function loadNote() {
   finishLoadingNote();
 }
 
+
+// Les notes copiées d'un autre appareil peuvent contenir une couleur de texte « figée » (ex. blanc du thème sombre) :
+// invisible sur un autre fond. On retire les couleurs en ligne trop peu contrastées avec le fond de l'éditeur.
+function fixLowContrastText(root) {
+  try {
+    const rgb = (s) => { const m = /rgba?\(([^)]+)\)/.exec(s || ''); if (!m) return null; const p = m[1].split(',').map((x) => parseFloat(x)); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+    const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+    let bg = null, el = root;
+    while (el && !bg) { const c = rgb(getComputedStyle(el).backgroundColor); if (c && c.a > 0.5) bg = c; el = el.parentElement; }
+    if (!bg) bg = { r: 255, g: 255, b: 255, a: 1 };
+    const lb = lum(bg);
+    root.querySelectorAll('[style*="color"], font[color]').forEach((n) => {
+      if (n.style && n.style.backgroundColor) return;   // texte surligné : on ne touche pas
+      const c = rgb(getComputedStyle(n).color);
+      if (!c) return;
+      const l = lum(c), ratio = (Math.max(l, lb) + 0.05) / (Math.min(l, lb) + 0.05);
+      if (ratio < 2) { n.style.removeProperty('color'); if (n.removeAttribute) n.removeAttribute('color'); }
+    });
+  } catch (e) { /* ignoré */ }
+}
+
 function finishLoadingNote(decryptedContent) {
   if (currentNote) {
     titleInput.value = currentNote.title || "";
     contentInput.innerHTML = (decryptedContent !== undefined) ? decryptedContent : (currentNote.content || "");
+    fixLowContrastText(contentInput);
     populateFolderSelect(currentNote.folder || "Sans catégorie");
     isFavorite = !!currentNote.favorite;
     isHidden = !!currentNote.hidden;

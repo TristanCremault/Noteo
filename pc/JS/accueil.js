@@ -513,6 +513,21 @@ function buildFolderLi(folder, depth, allFolders, displayText, treeInfo) {
   li.appendChild(btnAddSub);
 
   if (name !== "Sans catégorie" && name !== LOCKED_FOLDER) {
+    const btnRename = document.createElement('button');
+    btnRename.className = 'folder-add-sub';
+    btnRename.textContent = '✎';
+    btnRename.title = 'Renommer ce dossier';
+    btnRename.addEventListener('click', (e) => { e.stopPropagation(); noteoRenameFolder(name); });
+    li.appendChild(btnRename);
+    const btnMove = document.createElement('button');
+    btnMove.className = 'folder-add-sub';
+    btnMove.textContent = '⇄';
+    btnMove.title = 'Déplacer ce dossier dans un autre';
+    btnMove.addEventListener('click', (e) => { e.stopPropagation(); noteoMoveFolder(name); });
+    li.appendChild(btnMove);
+  }
+
+  if (name !== "Sans catégorie" && name !== LOCKED_FOLDER) {
     const btnDelete = document.createElement('button');
     btnDelete.className = 'folder-delete';
     btnDelete.textContent = '✕';
@@ -602,7 +617,10 @@ function renderNotes() {
   }
 
   const sortMode = sortSelect.value;
+  const q = noteFilter.trim().toLowerCase();
+  const rank = (n) => { if (!q) return 0; const t = n.title.toLowerCase(); return t === q ? 0 : t.startsWith(q) ? 1 : t.includes(q) ? 2 : 3; };
   notes.sort((a, b) => {
+    if (q && rank(a) !== rank(b)) return rank(a) - rank(b);   // recherche : le titre qui correspond passe en premier
     if (sortMode === 'date-asc') return new Date(a.updatedAt) - new Date(b.updatedAt);
     if (sortMode === 'alpha') return a.title.localeCompare(b.title);
     return new Date(b.updatedAt) - new Date(a.updatedAt); // date-desc par défaut

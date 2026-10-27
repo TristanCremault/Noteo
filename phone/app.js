@@ -732,7 +732,7 @@
     setTimeout(function () { t.remove(); }, 2200);
   }
 
-  function newFolderSheet(parent) {
+  function newFolderSheet(parent, onCreated) {
     parent = parent || null;
     openSheet(function (sheet) {
       heading(sheet, parent ? 'Nouveau sous-dossier dans « ' + labelOf(parent) + ' »' : 'Nouveau dossier');
@@ -770,6 +770,7 @@
         if (parent) { try { var col = new Set(JSON.parse(read('noteo-collapsed-folders') || '[]')); col.delete(parent); write('noteo-collapsed-folders', JSON.stringify(Array.from(col))); } catch (e) { /* ignoré */ } }
         closeSheet();
         render();
+        if (onCreated) onCreated(internal);
       }
       ok.addEventListener('click', submit);
       input.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
@@ -853,6 +854,7 @@
           none.textContent = 'Pas de sous-dossier ici.';
           sheet.appendChild(none);
         }
+        opt(sheet, parent ? '＋ Nouveau sous-dossier ici' : '＋ Nouveau dossier', '', function () { newFolderSheet(parent || null, function (nm) { onPick(nm); }); });
         if (extra) opt(sheet, extra.label, '', extra.fn);
       }
       draw();
@@ -1197,6 +1199,27 @@
     beginEdit(note, note.content || '', null);
   }
 
+
+  // Les notes copiées d'un autre appareil peuvent contenir une couleur de texte « figée » (ex. blanc du thème sombre) :
+  // invisible sur un autre fond. On retire les couleurs en ligne trop peu contrastées avec le fond de l'éditeur.
+function fixLowContrastText(root) {
+  try {
+    const rgb = (s) => { const m = /rgba?\(([^)]+)\)/.exec(s || ''); if (!m) return null; const p = m[1].split(',').map((x) => parseFloat(x)); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+    const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+    let bg = null, el = root;
+    while (el && !bg) { const c = rgb(getComputedStyle(el).backgroundColor); if (c && c.a > 0.5) bg = c; el = el.parentElement; }
+    if (!bg) bg = { r: 255, g: 255, b: 255, a: 1 };
+    const lb = lum(bg);
+    root.querySelectorAll('[style*="color"], font[color]').forEach((n) => {
+      if (n.style && n.style.backgroundColor) return;   // texte surligné : on ne touche pas
+      const c = rgb(getComputedStyle(n).color);
+      if (!c) return;
+      const l = lum(c), ratio = (Math.max(l, lb) + 0.05) / (Math.min(l, lb) + 0.05);
+      if (ratio < 2) { n.style.removeProperty('color'); if (n.removeAttribute) n.removeAttribute('color'); }
+    });
+  } catch (e) { /* ignoré */ }
+}
+
   function beginEdit(note, html, password) {
     ed = {
       id: note.id, isNew: false, folder: note.folder || DEFAULT_FOLDER, favorite: !!note.favorite, hidden: !!note.hidden,
@@ -1207,6 +1230,7 @@
     titleEl.value = note.title || '';
     bodyEl.innerHTML = cleanHtml(html);
     showEditor();
+    fixLowContrastText(bodyEl);
   }
 
   function newNote() {
@@ -4284,7 +4308,6 @@
     if (curSpace() === 'pc') { setSpace('phone'); return true; }
     return false;
   }
-  function pushGuard() { try { history.pushState({ noteo: 'guard' }, ''); } catch (e) { /* ignoré */ } }
   function backOrExit(viaHistory) {
     if (handleBack()) { if (viaHistory) pushGuard(); return; }
     var now = Date.now();
@@ -4294,13 +4317,21 @@
     toast('Appuie encore une fois pour quitter');
     if (viaHistory) pushGuard();
   }
-  var nativeBack = false;
+  var guarded = false, lastNativeBack = 0;
+  function pushGuard() { try { history.pushState({ noteo: 'guard' }, ''); guarded = true; } catch (e) { /* ignoré */ } }
   try {
     var AppPlugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
-    if (AppPlugin && AppPlugin.addListener) { AppPlugin.addListener('backButton', function () { backOrExit(false); }); nativeBack = true; }   // Android : le bouton / geste retour est géré ici
+    if (AppPlugin && AppPlugin.addListener) {
+      var pr = AppPlugin.addListener('backButton', function () { lastNativeBack = Date.now(); backOrExit(false); });   // Android : bouton / geste retour
+      if (pr && pr.catch) pr.catch(function () { /* plugin absent : l'historique prend le relais */ });
+    }
   } catch (e) { /* ignoré */ }
   try { history.replaceState({ noteo: 'base' }, ''); pushGuard(); } catch (e) { /* ignoré */ }
-  window.addEventListener('popstate', function () { if (!nativeBack) backOrExit(true); else pushGuard(); });   // navigateur : même comportement via l'historique
+  // Chrome / WebView ignorent les entrées d'historique ajoutées sans toucher l'écran : on en (re)crée une à chaque appui
+  ['pointerdown', 'touchstart', 'click', 'keydown'].forEach(function (ev) {
+    document.addEventListener(ev, function () { if (!guarded) pushGuard(); }, { capture: true, passive: true });
+  });
+  window.addEventListener('popstate', function () { guarded = false; if (Date.now() - lastNativeBack < 400) { return; } backOrExit(false); });
 
 
   startGates();
