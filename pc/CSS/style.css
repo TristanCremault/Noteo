@@ -1009,3 +1009,8 @@ input[type="search"]:focus {
 .sidebar.locked-mode #pinned-folder-list {
   display: none;
 }
+
+/* Réorganisation des dossiers par glisser-déposer */
+.folder-item.dragging { opacity: .4; }
+.folder-item.drop-before { box-shadow: 0 -2px 0 0 var(--accent, #6c8cff); }
+.folder-item.drop-after { box-shadow: 0 2px 0 0 var(--accent, #6c8cff); }

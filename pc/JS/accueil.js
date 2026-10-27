@@ -452,6 +452,48 @@ function buildFolderLi(folder, depth, allFolders, displayText, treeInfo) {
     renderNotes();
   });
 
+  // Glisser-déposer : réorganiser les dossiers au sein du même niveau
+  if (name !== LOCKED_FOLDER && name !== '__favorites__') {
+    li.draggable = true;
+    li.addEventListener('dragstart', (e) => {
+      try { e.dataTransfer.setData('text/plain', name); e.dataTransfer.effectAllowed = 'move'; } catch (er) {}
+      window.__dragFolder = name;
+      li.classList.add('dragging');
+    });
+    li.addEventListener('dragend', () => { window.__dragFolder = null; li.classList.remove('dragging'); document.querySelectorAll('.folder-item.drop-before,.folder-item.drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after')); });
+    li.addEventListener('dragover', (e) => {
+      const from = window.__dragFolder;
+      if (!from || from === name) return;
+      const all = getFolders();
+      const a = all.find((f) => f.name === from);
+      if (!a || (a.parent || null) !== (folder.parent || null)) return;
+      e.preventDefault();
+      const r = li.getBoundingClientRect();
+      const before = e.clientY < r.top + r.height / 2;
+      li.classList.toggle('drop-before', before);
+      li.classList.toggle('drop-after', !before);
+    });
+    li.addEventListener('dragleave', () => li.classList.remove('drop-before', 'drop-after'));
+    li.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const from = window.__dragFolder;
+      const before = li.classList.contains('drop-before');
+      li.classList.remove('drop-before', 'drop-after');
+      if (!from || from === name) return;
+      const all = getFolders();
+      const a = all.find((f) => f.name === from);
+      if (!a || (a.parent || null) !== (folder.parent || null)) return;
+      const sibs = orderedFolders(all.filter((f) => (f.parent || null) === (folder.parent || null) && folderInMySpace(f))).filter((f) => f.name !== from);
+      let idx = sibs.findIndex((f) => f.name === name);
+      if (!before) idx++;
+      sibs.splice(idx, 0, a);
+      const now = Date.now();
+      sibs.forEach((f, k) => { f.pos = k * 10; f.updatedAt = now; });
+      saveFolders(all);
+      renderFolders();
+    });
+  }
+
   li.appendChild(label);
 
   const btnAddSub = document.createElement('button');
@@ -488,16 +530,20 @@ function buildFolderLi(folder, depth, allFolders, displayText, treeInfo) {
       // Les notes d'un dossier verrouillé restent dans le dossier verrouillé
       const fallbackFolder = isLockedFolderName(name, getFolders()) ? LOCKED_FOLDER : "Sans catégorie";
       if (await noteoConfirm('Supprimer le dossier "' + name + '" ?' + warn + ' Les notes concernées seront déplacées vers "' + fallbackFolder + '".', 'Supprimer')) {
-        // On note la suppression pour qu'elle se propage aux autres appareils (compte en ligne)
-        if (typeof recordFolderDeletion === 'function') toRemove.forEach(recordFolderDeletion);
-
-        const updatedFolders = getFolders().filter((f) => !toRemove.includes(f.name));
+        // Un dossier commun aux deux espaces (anciens dossiers) n'est supprimé que d'ici : il reste sur le téléphone.
+        // Seuls les dossiers propres au PC sont réellement supprimés (suppression propagée au compte en ligne).
+        const nowIso = new Date().toISOString();
+        const allF = getFolders();
+        const trulyDelete = toRemove.filter((n) => { const f = allF.find((x) => x.name === n); return !f || f.space === MY_SPACE; });
+        const handOver = toRemove.filter((n) => trulyDelete.indexOf(n) < 0);
+        if (typeof recordFolderDeletion === 'function') trulyDelete.forEach(recordFolderDeletion);
+        const updatedFolders = allF.filter((f) => trulyDelete.indexOf(f.name) < 0);
+        updatedFolders.forEach((f) => { if (handOver.indexOf(f.name) >= 0) { f.space = 'phone'; f.updatedAt = nowIso; } });
         saveFolders(updatedFolders);
 
         const notes = getNotes();
-        const nowIso = new Date().toISOString();
         notes.forEach((n) => {
-          if (toRemove.includes(n.folder)) { n.folder = fallbackFolder; n.updatedAt = nowIso; }
+          if (toRemove.includes(n.folder) && (!n.space || n.space === MY_SPACE)) { n.folder = fallbackFolder; n.updatedAt = nowIso; }
         });
         saveNotes(notes);
 
@@ -1439,7 +1485,19 @@ async function applyFirstRunSetup() {
   const setupId = String(cfg.id || 'legacy');
   if (localStorage.getItem('noteo-setup-applied') === setupId) return false;
   localStorage.setItem('noteo-setup-applied', setupId);
-  if (getAccountType() !== 'none') return false; // un compte existe déjà (ex : restauré) : on n'y touche pas
+  if (getAccountType() !== 'none') {
+    // Un compte local a été restauré depuis la sauvegarde de secours (ancienne installation), mais l'installateur demande
+    // un compte EN LIGNE : on oublie l'ancien code PIN / l'ancien verrou de connexion (qui bloquaient avec « Code incorrect »)
+    // et on ouvre l'écran de connexion en ligne. Les notes de l'appareil sont conservées et fusionnées à la connexion.
+    if (cfg.accountType === 'online' && getAccountType() !== 'online') {
+      ['noteo-app-pin-enabled', 'noteo-app-pin-hash', 'noteo-online-pin-vault'].forEach((k) => localStorage.removeItem(k));
+      sessionStorage.removeItem('noteo-login-unlocked');
+      sessionStorage.removeItem('noteo-pin-unlocked');
+      localStorage.setItem('noteo-account-type', 'none');
+    } else {
+      return false; // un compte existe déjà (ex : restauré) : on n'y touche pas
+    }
+  }
 
   if (cfg.accountType === 'local') {
     window.location.href = 'compte.html?setup=local';

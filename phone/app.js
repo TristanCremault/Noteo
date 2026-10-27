@@ -191,7 +191,14 @@
     $('pin-select').textContent = sel.on ? 'Terminer' : 'Sélectionner';
     if (state.view === 'folders') renderFolders(); else renderNotes();
     applyHomeBg();
+    var navKey = state.view + '|' + state.folder + '|' + curSpace();
+    if (lastNavKey !== null && navKey !== lastNavKey && motionOk()) {
+      var deeper = navKey.split('|')[1] !== ALL && (lastNavKey.split('|')[1] === ALL || folderPath(navKey.split('|')[1]).length >= folderPath(lastNavKey.split('|')[1]).length);
+      listEl.animate([{ opacity: 0, transform: 'translateX(' + (deeper ? '7%' : '-7%') + ')' }, { opacity: 1, transform: 'none' }], { duration: 230, easing: EASE });
+    }
+    lastNavKey = navKey;
   }
+  var lastNavKey = null;
 
   function setSearchPlaceholder() {
     searchEl.placeholder = state.view === 'folders' ? 'Rechercher un dossier…' : 'Rechercher dans Noteo';
@@ -254,6 +261,13 @@
       addSub.textContent = '+ Sous-dossier';
       addSub.addEventListener('click', function () { newFolderSheet(state.folder); });
       crumbActions.appendChild(addSub);
+      if (!q && visible.filter(function (f) { return f.parent === state.folder; }).length > 1) {
+        var ord2 = document.createElement('button');
+        ord2.className = 'chip';
+        ord2.textContent = '↕ Ordre';
+        ord2.addEventListener('click', function () { reorderSheet(state.folder); });
+        crumbActions.appendChild(ord2);
+      }
       if (!q) {
         var allNotes = spaceNotes();
         var kidsList = orderFolders(visible.filter(function (f) { return f.parent === state.folder; }));
@@ -404,6 +418,7 @@
       opt(sheet, '+ Nouveau sous-dossier', '', function () { newFolderSheet(name); });
       if (!special) opt(sheet, 'Renommer', '', function () { renameFolderSheet(name); });
       if (!special) opt(sheet, 'Déplacer le dossier', '', function () { moveFolderSheet([name]); });
+      if (sibs.length > 1) opt(sheet, '↕ Réorganiser les dossiers…', '', function () { reorderSheet(me ? me.parent : null); });
       if (idx > 0) opt(sheet, '↑ Monter dans la liste', '', function () { shiftFolder(name, -1); });
       if (idx >= 0 && idx < sibs.length - 1) opt(sheet, '↓ Descendre dans la liste', '', function () { shiftFolder(name, 1); });
       if (name !== DEFAULT_FOLDER) opt(sheet, 'Supprimer le dossier', 'danger', function () { confirmDeleteFolder(name); });
@@ -415,7 +430,7 @@
     return name === LOCKED_FOLDER || getFolders().some(function (f) { return f.name !== except && f.name.toLowerCase() === low; });
   }
   function spellAttrs(input) {   // clavier : suggestions et correction automatique
-    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('autocomplete', 'on');   // « off » coupe la barre de suggestions de certains claviers Android
     input.setAttribute('autocorrect', 'on');
     input.setAttribute('autocapitalize', 'sentences');
     input.setAttribute('spellcheck', 'true');
@@ -494,6 +509,71 @@
     }
     folderPicker('Déplacer ' + (names.length > 1 ? plural(names.length, 'dossier', 'dossiers') : '« ' + labelOf(names[0]) + ' »') + ' dans', null, function (t) { apply(t); },
       { label: 'Mettre à la racine', fn: function () { closeSheet(); apply(null); } }, exclude);
+  }
+
+  // Réorganiser : on fait glisser les dossiers par la poignée ☰
+  function reorderSheet(parent) {
+    parent = parent || null;
+    var items = orderFolders(visibleFolders().filter(function (f) { return (f.parent || null) === parent; }));
+    if (items.length < 2) { toast('Il faut au moins deux dossiers pour changer l’ordre.'); return; }
+    openSheet(function (sheet) {
+      sheet.setAttribute('data-nofocus', '1');
+      heading(sheet, parent ? 'Ordre dans « ' + labelOf(parent) + ' »' : 'Ordre des dossiers');
+      var tip = document.createElement('p');
+      tip.className = 'hint';
+      tip.textContent = 'Maintiens ☰ puis fais glisser un dossier pour le déplacer.';
+      sheet.appendChild(tip);
+      var box = document.createElement('div');
+      box.className = 'reorder-list';
+      sheet.appendChild(box);
+      items.forEach(function (f) {
+        var row = document.createElement('div');
+        row.className = 'reorder-row';
+        row.setAttribute('data-name', f.name);
+        var grip = document.createElement('span');
+        grip.className = 'reorder-grip';
+        grip.textContent = '☰';
+        grip.setAttribute('aria-label', 'Déplacer ' + fLabel(f));
+        var nm = document.createElement('span');
+        nm.className = 'reorder-name';
+        nm.textContent = (f.name === LOCKED_FOLDER ? '🔒 ' : '') + fLabel(f);
+        row.appendChild(grip); row.appendChild(nm);
+        box.appendChild(row);
+        var drag = null;
+        grip.addEventListener('pointerdown', function (e) {
+          e.preventDefault();
+          try { grip.setPointerCapture(e.pointerId); } catch (err) { /* ignoré */ }
+          drag = { id: e.pointerId };
+          row.classList.add('dragging');
+          try { if (navigator.vibrate) navigator.vibrate(10); } catch (err) { /* ignoré */ }
+        });
+        grip.addEventListener('pointermove', function (e) {
+          if (!drag) return;
+          var rows = Array.prototype.slice.call(box.children);
+          var y = e.clientY;
+          for (var i = 0; i < rows.length; i++) {
+            var r = rows[i]; if (r === row) continue;
+            var rc = r.getBoundingClientRect(), mid = rc.top + rc.height / 2;
+            var rBefore = r.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING;   // r est avant la ligne tenue ?
+            // on déplace l'AUTRE ligne (déplacer la ligne tenue ferait perdre la capture du doigt)
+            if (!rBefore && y > mid) { box.insertBefore(r, row); break; }
+            if (rBefore && y < mid) { box.insertBefore(r, row.nextSibling); break; }
+          }
+        });
+        function end() { if (!drag) return; drag = null; row.classList.remove('dragging'); }
+        grip.addEventListener('pointerup', end);
+        grip.addEventListener('pointercancel', end);
+      });
+      sheetButtons(sheet, 'Enregistrer l’ordre', function () {
+        var names = Array.prototype.map.call(box.children, function (r) { return r.getAttribute('data-name'); });
+        var folders = getFolders(), now = new Date().toISOString();
+        names.forEach(function (n, k) { var real = folders.find(function (f) { return f.name === n; }); if (real) { real.pos = k * 10; real.updatedAt = now; } });
+        saveFolders(folders);
+        closeSheet();
+        render();
+        toast('Ordre enregistré');
+      });
+    });
   }
   function shiftFolder(name, dir) {
     var folders = getFolders();
@@ -582,6 +662,13 @@
     add.textContent = '+ Nouveau dossier';
     add.addEventListener('click', function () { newFolderSheet(null); });
     crumbActions.appendChild(add);
+    if (!q && items.length > 1) {
+      var ord = document.createElement('button');
+      ord.className = 'chip';
+      ord.textContent = '↕ Ordre';
+      ord.addEventListener('click', function () { reorderSheet(null); });
+      crumbActions.appendChild(ord);
+    }
     if (lockedOpen()) crumbActions.appendChild(lockedExitChip());
 
     selNotes = []; selFolders = items.map(function (it) { return it.f.name; }).filter(function (n) { return n !== DEFAULT_FOLDER && n !== LOCKED_FOLDER; });
@@ -691,6 +778,7 @@
       sheet.appendChild(input);
       sheet.appendChild(err);
       sheet.appendChild(row);
+      setTimeout(function () { try { input.blur(); input.focus(); } catch (e) { /* ignoré */ } }, 120);   // relance le clavier : les suggestions apparaissent aussi pour un sous-dossier
     });
   }
 
@@ -824,10 +912,16 @@
     });
     if (!toRemove.length) return;
     var parentName = parentOf(names[0]);
-    toRemove.forEach(recordFolderDeletion);
-    saveFolders(all.filter(function (f) { return toRemove.indexOf(f.name) < 0; }));
+    // Un dossier commun aux deux espaces (anciens dossiers) n'est supprimé que d'ici : il reste sur le PC.
+    // Seuls les dossiers propres au téléphone sont réellement supprimés (suppression propagée au compte en ligne).
+    var me = curSpace(), other = otherSpace();
+    var trulyDelete = toRemove.filter(function (n) { var f = all.find(function (x) { return x.name === n; }); return !f || f.space === me; });
+    trulyDelete.forEach(recordFolderDeletion);
+    var kept = all.filter(function (f) { return trulyDelete.indexOf(f.name) < 0; });
+    kept.forEach(function (f) { if (toRemove.indexOf(f.name) >= 0) { f.space = other; f.updatedAt = now; } });
+    saveFolders(kept);
     var notes = getNotes();
-    notes.forEach(function (n) { if (toRemove.indexOf(n.folder) >= 0) { n.folder = DEFAULT_FOLDER; n.updatedAt = now; } });
+    notes.forEach(function (n) { if (toRemove.indexOf(n.folder) >= 0 && (!n.space || n.space === me)) { n.folder = DEFAULT_FOLDER; n.updatedAt = now; } });
     saveNotes(notes);
     if (toRemove.indexOf(state.browse) >= 0) state.browse = parentName;
     if (toRemove.indexOf(state.folder) >= 0) state.folder = DEFAULT_FOLDER;
@@ -1158,7 +1252,7 @@
 
   // ---------- Transitions (ouverture / fermeture d'une note, page compte) ----------
   var lastOrigin = null;
-  function motionOk() { try { return !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) && !!Element.prototype.animate; } catch (e) { return false; } }
+  function motionOk() { try { return read('noteo-animations') !== 'off' && !!Element.prototype.animate; } catch (e) { return false; } }   // le réglage « supprimer les animations » d'Android n'est volontairement pas suivi : il se règle ici
   var EASE = 'cubic-bezier(.22,.9,.3,1)';
   function insetFrom(r) { return 'inset(' + Math.max(0, r.top) + 'px ' + Math.max(0, window.innerWidth - r.right) + 'px ' + Math.max(0, window.innerHeight - r.bottom) + 'px ' + Math.max(0, r.left) + 'px round 18px)'; }
   // La note s'ouvre en s'agrandissant depuis sa carte (comme sur Xiaomi)
@@ -1382,16 +1476,43 @@
     markDirty();
     updateFoot();
   }
-  // Appui sur la case (à gauche de la ligne) : coche / décoche
+  // Appui sur la case (à gauche de la ligne) : coche / décoche. Au doigt on réagit au relâchement (touchend) pour que le clavier ne s'ouvre pas ; à la souris, au clic.
+  var lastTodoToggle = 0, todoTouch = null;
+  function todoAt(target, x) {
+    var t = target && target.closest && target.closest('.todo');
+    if (!t || !bodyEl.contains(t)) return null;
+    return (x - t.getBoundingClientRect().left <= 46) ? t : null;
+  }
+  function flipTodo(t) {
+    t.setAttribute('data-done', t.getAttribute('data-done') === '1' ? '0' : '1');
+    lastTodoToggle = Date.now();
+    markDirty();
+    updateFoot();
+  }
+  bodyEl.addEventListener('touchstart', function (e) {
+    todoTouch = null;
+    if (!ed || !ed.editable || e.touches.length !== 1) return;
+    var c = e.touches[0], t = todoAt(e.target, c.clientX);
+    if (t) todoTouch = { x: c.clientX, y: c.clientY, el: t };
+  }, { passive: true });
+  bodyEl.addEventListener('touchmove', function (e) {
+    if (!todoTouch) return;
+    var c = e.touches[0];
+    if (Math.abs(c.clientX - todoTouch.x) > 10 || Math.abs(c.clientY - todoTouch.y) > 10) todoTouch = null;   // on fait défiler
+  }, { passive: true });
+  bodyEl.addEventListener('touchend', function (e) {
+    var tt = todoTouch; todoTouch = null;
+    if (!tt || !bodyEl.contains(tt.el)) return;
+    if (e.cancelable) e.preventDefault();   // pas de curseur ni de clavier : on coche seulement
+    flipTodo(tt.el);
+  }, { passive: false });
   bodyEl.addEventListener('click', function (e) {
     if (!ed || !ed.editable) return;
-    var t = e.target.closest && e.target.closest('.todo');
-    if (!t || !bodyEl.contains(t)) return;
-    var rc = t.getBoundingClientRect();
-    if (e.clientX - rc.left > 34) return;
+    if (Date.now() - lastTodoToggle < 700) { e.preventDefault(); return; }   // déjà traité au touchend
+    var t = todoAt(e.target, e.clientX);
+    if (!t) return;
     e.preventDefault();
-    t.setAttribute('data-done', t.getAttribute('data-done') === '1' ? '0' : '1');
-    markDirty();
+    flipTodo(t);
   }, true);
   // Entrée : nouvelle case décochée ; Entrée sur une case vide : sort de la liste
   bodyEl.addEventListener('keydown', function (e) {
@@ -1508,7 +1629,7 @@
     input.id = id;
     input.type = type || 'text';
     input.placeholder = placeholder || '';
-    input.autocomplete = 'off';
+    input.autocomplete = (!type || type === 'text') ? 'on' : 'off';
     if (!type || type === 'text') { input.setAttribute('autocorrect', 'on'); input.setAttribute('spellcheck', 'true'); input.setAttribute('autocapitalize', 'sentences'); }
     wrap.appendChild(input);
     return { wrap: wrap, input: input };
@@ -3493,6 +3614,7 @@
     $('acc-pin-on').checked = pinEnabled() && !!read('noteo-app-pin-hash');
     if ($('acc-username') && type === 'online' && !read('noteo-username') && onlineAccount()) write('noteo-username', onlineAccount().email);
     if ($('acc-username')) $('acc-username').value = read('noteo-username') || '';
+    if ($('acc-anim')) $('acc-anim').checked = read('noteo-animations') !== 'off';
     if ($('acc-stay')) { $('acc-stay').checked = staySignedIn(); $('acc-stay').closest('label').hidden = type !== 'online'; }
     $('acc-pin-label').textContent = read('noteo-app-pin-hash') ? 'Modifier le code PIN' : 'Définir le code PIN';
   }
@@ -3834,6 +3956,7 @@
     }, 'app-pin', pinLabels);
     later();
   });
+  if ($('acc-anim')) $('acc-anim').addEventListener('change', function () { write('noteo-animations', $('acc-anim').checked ? 'on' : 'off'); });
   var stayBox = $('acc-stay');
   if (stayBox) stayBox.addEventListener('change', function () {
     write('noteo-stay-signed-in', stayBox.checked ? 'true' : 'false');
@@ -4162,16 +4285,22 @@
     return false;
   }
   function pushGuard() { try { history.pushState({ noteo: 'guard' }, ''); } catch (e) { /* ignoré */ } }
-  try { history.replaceState({ noteo: 'base' }, ''); pushGuard(); } catch (e) { /* ignoré */ }
-  window.addEventListener('popstate', function () {
-    if (handleBack()) { pushGuard(); return; }
+  function backOrExit(viaHistory) {
+    if (handleBack()) { if (viaHistory) pushGuard(); return; }
     var now = Date.now();
     var P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
     if (now - lastBackPress < 2000) { if (P && P.exitApp) P.exitApp(); else { try { history.back(); } catch (e) { /* ignoré */ } } return; }
     lastBackPress = now;
     toast('Appuie encore une fois pour quitter');
-    pushGuard();
-  });
+    if (viaHistory) pushGuard();
+  }
+  var nativeBack = false;
+  try {
+    var AppPlugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (AppPlugin && AppPlugin.addListener) { AppPlugin.addListener('backButton', function () { backOrExit(false); }); nativeBack = true; }   // Android : le bouton / geste retour est géré ici
+  } catch (e) { /* ignoré */ }
+  try { history.replaceState({ noteo: 'base' }, ''); pushGuard(); } catch (e) { /* ignoré */ }
+  window.addEventListener('popstate', function () { if (!nativeBack) backOrExit(true); else pushGuard(); });   // navigateur : même comportement via l'historique
 
 
   startGates();

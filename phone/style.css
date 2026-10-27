@@ -820,3 +820,27 @@ body::after {
 .selbar .tab { font-size: 13px; padding: 0 2px; }
 .space-banner { margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; font-size: 14px; font-weight: 600; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2)); text-align: center; }
 .space-banner[hidden] { display: none; }
+
+
+/* ---------- Dossiers sélectionnables ---------- */
+.folder-row.selectable { position: relative; padding-left: 44px; }
+.folder-row.selectable .selmark { left: 10px; }
+.folder-row.selected { background: var(--panel-alt); border-radius: 14px; }
+.folder-row.selected .selmark { background: var(--accent); border-color: var(--accent); }
+.folder-row.selected .selmark::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 14px; line-height: 1; }
+
+/* ---------- Éditeur : suit la zone visible quand le clavier s'ouvre ---------- */
+.editor { height: 100dvh; }
+
+/* ---------- Listes à cocher ---------- */
+.todo { position: relative; padding-left: 34px; min-height: 1.5em; }
+.todo::before { content: ""; position: absolute; left: 4px; top: 0.18em; width: 20px; height: 20px; box-sizing: border-box; border: 2px solid var(--accent); border-radius: 6px; background: transparent; }
+.todo[data-done="1"]::before { background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 14px no-repeat; }
+.todo[data-done="1"] { text-decoration: line-through; opacity: 0.6; }
+
+/* Réorganiser les dossiers */
+.reorder-list { display: grid; gap: 8px; margin: 8px 0 14px; max-height: 50vh; overflow-y: auto; }
+.reorder-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line, #262633); border-radius: 14px; background: var(--panel); }
+.reorder-row.dragging { border-color: var(--accent); box-shadow: 0 6px 18px -6px rgba(75, 94, 252, .6); }
+.reorder-grip { font-size: 22px; line-height: 1; padding: 8px 10px; cursor: grab; touch-action: none; user-select: none; color: var(--muted); }
+.reorder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

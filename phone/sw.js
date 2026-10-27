@@ -1,5 +1,5 @@
 // Service worker : met l'appli en cache pour qu'elle s'ouvre aussi sans réseau.
-const CACHE = 'noteo-mobile-v11';
+const CACHE = 'noteo-mobile-v12';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/logo-small.png', 'icons/logo-small-light.png', 'icons/logo-wm.png'];
 
 self.addEventListener('install', (e) => {
