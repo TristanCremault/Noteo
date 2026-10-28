@@ -1023,3 +1023,18 @@ html:not(.no-anim) .note-card { animation: noteoItemIn .2s ease-out; }
 html:not(.no-anim) .modal-content { animation: noteoPageIn .18s ease-out; }
 
 .account-hint { font-size: 12px; opacity: .7; margin: 4px 0 0; }
+
+/* Mode « Sélectionner » */
+#btn-select-mode.active { background: var(--accent, #4b5efc); color: #fff; }
+.note-card.selectable { cursor: pointer; }
+.note-card.selected { outline: 2px solid var(--accent, #4b5efc); }
+.folder-item.selected { outline: 1px solid var(--accent, #4b5efc); }
+.sel-bar { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 14px; margin-top: auto; background: var(--bg-panel, #1c1c24); border-top: 1px solid var(--border-mid, #333); z-index: 20; }
+.sel-bar.hidden { display: none; }
+.sel-bar .sel-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.sel-bar button:disabled { opacity: .4; cursor: default; }
+.sel-bar button.danger { color: #ff6b6b; }
+html:not(.no-anim) .note-card.selectable { animation: none; }
+.sel-bar button { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border-mid, #333); background: var(--bg-sidebar, #16161c); color: inherit; cursor: pointer; font-size: 13px; }
+.sel-bar button:hover:not(:disabled) { border-color: var(--accent, #4b5efc); }
+#btn-select-mode { padding: 0 14px; border-radius: 10px; }

@@ -844,3 +844,6 @@ body::after {
 .reorder-row.dragging { border-color: var(--accent); box-shadow: 0 6px 18px -6px rgba(75, 94, 252, .6); }
 .reorder-grip { font-size: 22px; line-height: 1; padding: 8px 10px; cursor: grab; touch-action: none; user-select: none; color: var(--muted); }
 .reorder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fmt-row[hidden] { display: none !important; }
+#btn-fmt-toggle.on { color: var(--accent, #7c5cff); }

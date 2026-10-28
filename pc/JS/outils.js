@@ -272,3 +272,118 @@ async function noteoImportFiles(fileList) {
     }
   }, 400);
 })();
+
+
+// ----- Mode « Sélectionner » : déplacer, supprimer, envoyer vers le téléphone… sur plusieurs notes / dossiers -----
+(function selectionTools() {
+  const topbar = document.querySelector('.topbar');
+  if (!topbar || typeof noteoSel === 'undefined') return;
+  const btn = document.createElement('button'); btn.id = 'btn-select-mode'; btn.textContent = 'Sélectionner';
+  btn.title = 'Choisir plusieurs notes ou dossiers pour les déplacer ou les supprimer';
+  const sortSel = document.getElementById('sort-select');
+  topbar.insertBefore(btn, sortSel);
+
+  const bar = document.createElement('div'); bar.id = 'sel-bar'; bar.className = 'sel-bar hidden';
+  bar.innerHTML = '<span id="sel-count">Rien de sélectionné</span><span class="sel-actions">' +
+    '<button id="sel-all">Tout sélectionner</button><button id="sel-move">⇄ Déplacer</button><button id="sel-fav">★ Favori</button>' +
+    '<button id="sel-phone">📱 Vers le téléphone</button><button id="sel-del" class="danger">Supprimer</button><button id="sel-done">Terminer</button></span>';
+  (document.querySelector('.main') || document.body).appendChild(bar);
+  const $ = (id) => document.getElementById(id);
+
+  function visibleNoteIds() { return getNotes().filter((n) => (!n.space || n.space === MY_SPACE)).map((n) => n.id); }
+  window.noteoSelUpdate = function () {
+    const nn = noteoSel.notes.size, nf = noteoSel.folders.size;
+    const parts = [];
+    if (nn) parts.push(nn + ' note' + (nn > 1 ? 's' : ''));
+    if (nf) parts.push(nf + ' dossier' + (nf > 1 ? 's' : ''));
+    const fem = nn > 0 && nf === 0;
+    $('sel-count').textContent = parts.length ? parts.join(' et ') + ' sélectionné' + (fem ? 'e' : '') + (nn + nf > 1 ? 's' : '') : 'Rien de sélectionné';
+    ['sel-move', 'sel-del'].forEach((id) => { $(id).disabled = !(nn || nf); });
+    ['sel-fav', 'sel-phone'].forEach((id) => { $(id).disabled = !nn; });
+  };
+  function setMode(on) {
+    noteoSel.on = on; if (!on) { noteoSel.notes.clear(); noteoSel.folders.clear(); }
+    bar.classList.toggle('hidden', !on); btn.textContent = on ? 'Terminer' : 'Sélectionner'; btn.classList.toggle('active', on);
+    renderFolders(); renderNotes(); noteoSelUpdate();
+  }
+  btn.addEventListener('click', () => setMode(!noteoSel.on));
+  $('sel-done').addEventListener('click', () => setMode(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && noteoSel.on && !document.querySelector('.modal[style*="400"]')) setMode(false); });
+
+  $('sel-all').addEventListener('click', () => {
+    // Toutes les notes actuellement affichées dans la liste
+    document.querySelectorAll('#notes-list .note-card').forEach(() => {});
+    const shown = (window.noteoShownIds || []);
+    shown.forEach((id) => noteoSel.notes.add(id));
+    renderNotes(); noteoSelUpdate();
+  });
+
+  $('sel-move').addEventListener('click', async () => {
+    const folders = getFolders();
+    const fnames = Array.from(noteoSel.folders);
+    const exclude = fnames.slice(); fnames.forEach((n) => getFolderDescendantNames(folders, n).forEach((d) => exclude.push(d)));
+    const target = await noteoPickFolder('Déplacer ' + $('sel-count').textContent.replace(/ sélectionnée?s?$/, '') + ' dans…', exclude);
+    if (target === null) return;
+    const now = new Date().toISOString();
+    if (fnames.length) {
+      const fl = getFolders();
+      fnames.forEach((n) => { const f = fl.find((x) => x.name === n); if (f && (f.parent || null) !== (target || null) && isLockedFolderName(target || 'x', fl) === isLockedFolderName(n, fl)) { f.parent = target || null; f.updatedAt = now; } });
+      saveFolders(fl);
+    }
+    if (noteoSel.notes.size) {
+      const dest = target || 'Sans catégorie';
+      const fl = getFolders();
+      const notes = getNotes();
+      notes.forEach((n) => { if (noteoSel.notes.has(n.id) && isLockedFolderName(dest, fl) === isLockedFolderName(n.folder, fl)) { n.folder = dest; n.updatedAt = now; } });
+      saveNotes(notes);
+    }
+    setMode(false);
+  });
+
+  $('sel-fav').addEventListener('click', () => {
+    const notes = getNotes(); const now = new Date().toISOString();
+    const mine = notes.filter((n) => noteoSel.notes.has(n.id));
+    const allFav = mine.every((n) => n.favorite);
+    mine.forEach((n) => { n.favorite = !allFav; n.updatedAt = now; });
+    saveNotes(notes); setMode(false);
+  });
+
+  $('sel-phone').addEventListener('click', async () => {
+    if (localStorage.getItem('noteo-account-type') !== 'online') { await noteoAlert("Pour envoyer des notes vers la version téléphone, connecte-toi à un compte en ligne (le même sur le téléphone) : c'est lui qui relie les deux espaces."); return; }
+    if (!(await noteoConfirm('Envoyer ' + noteoSel.notes.size + ' note(s) vers la version téléphone ?\n\nElles disparaîtront de Noteo sur ordinateur et apparaîtront sur ton téléphone (même compte en ligne).', 'Envoyer'))) return;
+    const notes = getNotes(), fl = getFolders(), now = new Date().toISOString();
+    notes.forEach((n) => {
+      if (!noteoSel.notes.has(n.id)) return;
+      const fo = fl.find((x) => x.name === n.folder);
+      if (fo && fo.space === 'pc') n.folder = 'Sans catégorie';
+      n.space = 'phone'; n.updatedAt = now;
+    });
+    saveNotes(notes); setMode(false);
+  });
+
+  $('sel-del').addEventListener('click', async () => {
+    const msg = 'Supprimer ' + $('sel-count').textContent.replace(/ sélectionnée?s?$/, '') + ' ? Cette action est définitive. Les notes d\'un dossier supprimé vont dans « Sans catégorie ».';
+    if (!(await noteoConfirm(msg, 'Supprimer'))) return;
+    const now = new Date().toISOString();
+    if (noteoSel.notes.size) {
+      noteoSel.notes.forEach((id) => { if (typeof recordNoteDeletion === 'function') recordNoteDeletion(id); });
+      saveNotes(getNotes().filter((n) => !noteoSel.notes.has(n.id)));
+    }
+    if (noteoSel.folders.size) {
+      const all = getFolders();
+      const toRemove = [];
+      noteoSel.folders.forEach((n) => [n].concat(getFolderDescendantNames(all, n)).forEach((x) => { if (toRemove.indexOf(x) < 0) toRemove.push(x); }));
+      const truly = toRemove.filter((n) => { const f = all.find((x) => x.name === n); return !f || f.space === MY_SPACE; });
+      const handOver = toRemove.filter((n) => truly.indexOf(n) < 0);
+      if (typeof recordFolderDeletion === 'function') truly.forEach(recordFolderDeletion);
+      const kept = all.filter((f) => truly.indexOf(f.name) < 0);
+      kept.forEach((f) => { if (handOver.indexOf(f.name) >= 0) { f.space = 'phone'; f.updatedAt = now; } });
+      saveFolders(kept);
+      const notes = getNotes();
+      notes.forEach((n) => { if (toRemove.indexOf(n.folder) >= 0 && (!n.space || n.space === MY_SPACE)) { n.folder = 'Sans catégorie'; n.updatedAt = now; } });
+      saveNotes(notes);
+      if (toRemove.indexOf(activeFolder) >= 0) activeFolder = null;
+    }
+    setMode(false);
+  });
+})();

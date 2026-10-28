@@ -31,6 +31,9 @@ function initialActiveFolder() {
   if (saved === null) return "Sans catégorie";
   return saved === '' ? null : saved;
 }
+// Mode « Sélectionner » (notes et dossiers) : l'interface est dans outils.js
+const noteoSel = { on: false, notes: new Set(), folders: new Set() };
+function noteoSelChanged() { if (typeof noteoSelUpdate === 'function') noteoSelUpdate(); }
 let activeFolder = initialActiveFolder();
 let folderFilter = "";
 let noteFilter = "";
@@ -446,7 +449,19 @@ function buildFolderLi(folder, depth, allFolders, displayText, treeInfo) {
     li.classList.add('active');
   }
 
+  if (noteoSel.on && name !== 'Sans catégorie' && name !== LOCKED_FOLDER) {
+    const picked = noteoSel.folders.has(name);
+    li.classList.toggle('selected', picked);
+    label.textContent = (picked ? '☑ ' : '☐ ') + label.textContent;
+  }
+
   label.addEventListener('click', () => {
+    if (noteoSel.on) {
+      if (name === 'Sans catégorie' || name === LOCKED_FOLDER) return;
+      if (noteoSel.folders.has(name)) noteoSel.folders.delete(name); else noteoSel.folders.add(name);
+      renderFolders(); noteoSelChanged();
+      return;
+    }
     activeFolder = (activeFolder === name) ? null : name;
     renderFolders();
     renderNotes();
@@ -626,6 +641,7 @@ function renderNotes() {
     return new Date(b.updatedAt) - new Date(a.updatedAt); // date-desc par défaut
   });
 
+  window.noteoShownIds = notes.map((n) => n.id);
   notesList.innerHTML = "";
 
   if (notes.length === 0) {
@@ -641,7 +657,8 @@ function renderNotes() {
     header.className = 'note-card-header';
 
     const title = document.createElement('h3');
-    title.textContent = (note.favorite ? "★ " : "") + note.title;
+    title.textContent = (noteoSel.on ? (noteoSel.notes.has(note.id) ? '☑ ' : '☐ ') : '') + (note.favorite ? "★ " : "") + note.title;
+    if (noteoSel.on) { card.classList.add('selectable'); card.classList.toggle('selected', noteoSel.notes.has(note.id)); }
 
     const menuBtn = document.createElement('button');
     menuBtn.className = 'note-menu-btn';
@@ -789,6 +806,11 @@ function renderNotes() {
     card.appendChild(menu);
 
     card.addEventListener('click', () => {
+      if (noteoSel.on) {
+        if (noteoSel.notes.has(note.id)) noteoSel.notes.delete(note.id); else noteoSel.notes.add(note.id);
+        renderNotes(); noteoSelChanged();
+        return;
+      }
       window.location.href = "note.html?id=" + note.id;
     });
 

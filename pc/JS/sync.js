@@ -246,8 +246,12 @@ function mergeNotesAndFolders(localNotes, localFolders, remoteNotes, remoteFolde
   });
 
   const foldersByName = new Map();
+  const folderTime = (f) => Date.parse(f.updatedAt || f.createdAt || 0) || 0;
   normalizeFolders(localFolders).forEach((f) => foldersByName.set(f.name, f));
-  normalizeFolders(remoteFolders).forEach((f) => { if (!foldersByName.has(f.name)) foldersByName.set(f.name, f); });
+  normalizeFolders(remoteFolders).forEach((f) => {
+    const ex = foldersByName.get(f.name);
+    if (!ex || folderTime(f) > folderTime(ex)) foldersByName.set(f.name, f); // renommé / déplacé / réordonné ailleurs
+  });
 
   const mergedFolders = [];
   foldersByName.forEach((f) => {
@@ -802,7 +806,7 @@ async function syncOnlineNow(force) {
   if (!sessionStorage.getItem('noteo-online-password')) return;
 
   const now = Date.now();
-  if (!force && now - lastSyncAttempt < 15000) return;
+  if (!force && now - lastSyncAttempt < 8000) return;
   lastSyncAttempt = now;
 
   if (!(await ensureOnlineSession())) return;
@@ -814,7 +818,7 @@ const trySyncWhenBackOnline = () => syncOnlineNow(true);
 
 window.addEventListener('online', () => { syncOnlineNow(true).catch(() => {}); });
 window.addEventListener('focus', () => { syncOnlineNow(false).catch(() => {}); });
-setInterval(() => { syncOnlineNow(false).catch(() => {}); }, 60000);
+setInterval(() => { syncOnlineNow(false).catch(() => {}); }, 20000);
 setTimeout(() => { syncOnlineNow(false).catch(() => {}); }, 3000);
 
 // --- Boîtes de dialogue intégrées (remplacent alert() / confirm()) ---

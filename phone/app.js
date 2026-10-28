@@ -204,6 +204,16 @@
     searchEl.placeholder = state.view === 'folders' ? 'Rechercher un dossier…' : 'Rechercher dans Noteo';
   }
 
+  function sortSheet() {
+    var cur = read('noteo-sort') || 'date-desc';
+    openSheet(function (sheet) {
+      heading(sheet, 'Trier les notes');
+      [['date-desc', 'Du plus récent au plus ancien'], ['date-asc', 'Du plus ancien au plus récent'], ['alpha', 'De A à Z'], ['alpha-desc', 'De Z à A']].forEach(function (o) {
+        opt(sheet, o[1], o[0] === cur ? 'sel' : '', function () { write('noteo-sort', o[0]); closeSheet(); render(); });
+      });
+    });
+  }
+
   function renderNotes() {
     setSearchPlaceholder();
     crumbEl.textContent = state.folder === FAVORITES ? '★ Favoris' : (state.folder === ALL ? 'Toutes les notes' : folderPath(state.folder));
@@ -228,14 +238,22 @@
       var t = String(n.title || '').toLowerCase();
       return t === q ? 0 : (t.indexOf(q) === 0 ? 1 : (t.indexOf(q) >= 0 ? 2 : 3));
     }
-    notes.sort(function (a, b) { return (rank(a) - rank(b)) || (new Date(b.updatedAt) - new Date(a.updatedAt)); });
+    var sortMode = read('noteo-sort') || 'date-desc';
+    function byTitle(a, b) { return String(a.title || '').localeCompare(String(b.title || ''), 'fr', { sensitivity: 'base', numeric: true }); }
+    notes.sort(function (a, b) {
+      var r = rank(a) - rank(b); if (r) return r;
+      if (sortMode === 'date-asc') return new Date(a.updatedAt) - new Date(b.updatedAt);
+      if (sortMode === 'alpha') return byTitle(a, b);
+      if (sortMode === 'alpha-desc') return byTitle(b, a);
+      return new Date(b.updatedAt) - new Date(a.updatedAt);
+    });
 
     // Sous-dossiers du dossier ouvert (en tête de liste) + boutons « Parent » et « + Sous-dossier »
     var kidsRows = [];
     selFolders = [];
     selNotes = notes;
     var isRealFolder = state.folder !== FAVORITES && state.folder !== ALL;
-    if (curSpace() === 'pc') {
+    if (curSpace() === 'pc' || accountType() === 'online') {
       var rf = document.createElement('button');
       rf.className = 'chip';
       rf.textContent = '↻ Actualiser';
@@ -243,6 +261,11 @@
       crumbActions.appendChild(rf);
     }
     if (lockedView) crumbActions.appendChild(lockedExitChip());
+    var sortChip = document.createElement('button');
+    sortChip.className = 'chip';
+    sortChip.textContent = '⇅ ' + ({ 'date-desc': 'Récentes', 'date-asc': 'Anciennes', 'alpha': 'A → Z', 'alpha-desc': 'Z → A' }[sortMode] || 'Récentes');
+    sortChip.addEventListener('click', sortSheet);
+    crumbActions.appendChild(sortChip);
     if (isRealFolder) {
       var visible = visibleFolders();
       var parent = parentOf(state.folder);
@@ -1261,6 +1284,7 @@ function fixLowContrastText(root) {
     findBar.hidden = true;
     bodyEl.spellcheck = read('noteo-spellcheck') === 'on';   // par défaut sans soulignement : toucher un mot souligné ouvre le menu du clavier et empêche d'écrire (les suggestions du clavier restent actives)
     syncFavButton(ed.favorite);
+    applyFmtHidden();
     inFolderEl.textContent = 'Dans : ' + folderPath(ed.folder) + '  ▾';
     setStatus(ed.isNew ? 'Nouvelle note' : 'Enregistré');
     applyHidden();
@@ -1326,6 +1350,15 @@ function fixLowContrastText(root) {
   }
 
   // L'éditeur suit la zone réellement visible (clavier ouvert) : la barre du haut ne disparaît plus
+  function applyFmtHidden() {
+    var hide = read('noteo-fmt-hidden') === '1';
+    var row = $('fmt-row');
+    if (row) row.hidden = hide;
+    var b = $('btn-fmt-toggle');
+    if (b) { b.setAttribute('aria-pressed', String(hide)); b.classList.toggle('on', hide); b.setAttribute('aria-label', hide ? 'Afficher la barre de mise en forme' : 'Masquer la barre de mise en forme'); }
+    fitEditor();
+  }
+  if ($('btn-fmt-toggle')) $('btn-fmt-toggle').addEventListener('click', function () { write('noteo-fmt-hidden', read('noteo-fmt-hidden') === '1' ? '0' : '1'); applyFmtHidden(); });
   function fitEditor() {
     if (editorEl.hidden) return;
     var vv = window.visualViewport;
@@ -2736,7 +2769,7 @@ function fixLowContrastText(root) {
   async function syncOnlineNow(force) {
     if (accountType() !== 'online' || navigator.onLine === false || !sget('noteo-online-password')) return;
     var now = Date.now();
-    if (!force && now - lastSync < 15000) return;
+    if (!force && now - lastSync < 8000) return;
     lastSync = now;
     await pushOnlineData();
   }
@@ -2748,7 +2781,7 @@ function fixLowContrastText(root) {
   }
   window.addEventListener('online', function () { syncOnlineNow(true).catch(function () {}); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) syncOnlineNow(false).catch(function () {}); });
-  setInterval(function () { syncOnlineNow(false).catch(function () {}); }, 60000);
+  setInterval(function () { if (!document.hidden) syncOnlineNow(false).catch(function () {}); }, 20000);
   setTimeout(function () { syncOnlineNow(false).catch(function () {}); }, 3000);
   window.addEventListener('noteo-data-merged', function () { try { render(); } catch (e) { /* ignoré */ } });
   window.addEventListener('noteo-profile-merged', function () {
@@ -4301,8 +4334,10 @@ function fixLowContrastText(root) {
     }
     if (state.query) { state.query = ''; searchEl.value = ''; render(); return true; }
     if (state.view === 'notes' && state.folder !== ALL) {
-      var p = state.folder === FAVORITES ? null : parentOf(state.folder);
-      state.folder = p || ALL; render(); return true;
+      if (state.folder === FAVORITES) { state.folder = ALL; render(); return true; }
+      var p = parentOf(state.folder);
+      if (p) state.folder = p; else { state.view = 'folders'; state.browse = null; }   // dossier racine : retour à la liste des dossiers
+      render(); return true;
     }
     if (curSpace() === 'pc') { setSpace('phone'); return true; }
     return false;

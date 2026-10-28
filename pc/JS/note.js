@@ -503,7 +503,8 @@ function applyEditLockIfNeeded() {
   }
 }
 
-async function saveNote() {
+// Enregistrement : écrit la note dans le stockage (sans quitter la page). Renvoie false si rien n'a été enregistré.
+async function persistNote(silent) {
   const notes = getNotes();
   const now = new Date().toISOString();
 
@@ -511,13 +512,15 @@ async function saveNote() {
   // et on ne stocke JAMAIS le texte en clair dans .content.
   if (pendingLock && pendingLock.requireOpen) {
     if (!activeLockPassword) {
-      noteoAlert("Le mot de passe de verrouillage n'est plus disponible (session expirée). Rouvre la note avec son mot de passe, modifie-la, puis réessaie d'enregistrer.");
-      return;
+      if (!silent) await noteoAlert("Le mot de passe de verrouillage n'est plus disponible (session expirée). Rouvre la note avec son mot de passe, modifie-la, puis réessaie d'enregistrer.");
+      return false;
     }
     pendingLock.encrypted = await encryptText(activeLockPassword, contentInput.innerHTML);
   }
 
   const contentToStore = (pendingLock && pendingLock.requireOpen) ? "" : contentInput.innerHTML;
+
+  if (!currentNote && silent && !titleInput.value.trim() && !contentInput.textContent.trim() && !contentInput.querySelector('img,table')) return false;   // note neuve encore vide : rien à garder
 
   if (currentNote) {
     currentNote.title = titleInput.value.trim() || "Sans titre";
@@ -552,8 +555,15 @@ async function saveNote() {
   }
 
   saveNotes(notes);
+  noteDirty = false;
   createdAt.textContent = "Créée le : " + formatDate(currentNote.createdAt);
-  updatedAt.textContent = "Modifiée le : " + formatDate(currentNote.updatedAt);
+  updatedAt.textContent = silent ? "Enregistrée automatiquement à " + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : "Modifiée le : " + formatDate(currentNote.updatedAt);
+  return true;
+}
+
+async function saveNote() {
+  clearTimeout(autoSaveTimer);
+  if (!(await persistNote(false))) return;
 
   // Compte en ligne : on attend que l'envoi chiffré soit terminé avant de quitter la
   // page, sinon la navigation coupe la requête en cours et la note n'est jamais envoyée.
@@ -562,7 +572,22 @@ async function saveNote() {
   window.location.href = "index.html";
 }
 
-btnBack.addEventListener('click', () => {
+// Enregistrement automatique : 2 secondes après la dernière modification
+let noteDirty = false;
+let autoSaveTimer = null;
+function scheduleAutoSave() {
+  noteDirty = true;
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => { persistNote(true).catch(() => {}); }, 2000);
+}
+contentInput.addEventListener('input', scheduleAutoSave);
+titleInput.addEventListener('input', scheduleAutoSave);
+folderSelect.addEventListener('change', scheduleAutoSave);
+window.addEventListener('beforeunload', () => { if (noteDirty) { clearTimeout(autoSaveTimer); persistNote(true).catch(() => {}); } });
+
+btnBack.addEventListener('click', async () => {
+  clearTimeout(autoSaveTimer);
+  if (noteDirty) { await persistNote(true).catch(() => {}); await lastOnlineSync; }
   window.location.href = "index.html";
 });
 
@@ -571,11 +596,13 @@ btnSave.addEventListener('click', saveNote);
 btnFavorite.addEventListener('click', () => {
   isFavorite = !isFavorite;
   updateFavoriteButton();
+  scheduleAutoSave();
 });
 
 btnHideContent.addEventListener('click', () => {
   isHidden = !isHidden;
   updateHideButton();
+  scheduleAutoSave();
 });
 
 // --- Déplacer vers le dossier verrouillé ---
@@ -968,23 +995,55 @@ function notifyContentChanged() { contentInput.dispatchEvent(new Event('input', 
 document.getElementById('btn-todo').addEventListener('click', () => {
   focusEditor();
   const sel = window.getSelection();
-  if (!sel.rangeCount || !contentInput.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-    document.execCommand('insertHTML', false, '<div class="todo" data-done="0"><br></div>');
+  const placeCaretEnd = (el) => {
+    const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
+    sel.removeAllRanges(); sel.addRange(r);
+  };
+  const newTodo = () => { const d = document.createElement('div'); d.className = 'todo'; d.setAttribute('data-done', '0'); d.appendChild(document.createElement('br')); return d; };
+
+  // Éditeur vide : on démarre directement une première case
+  if (!contentInput.textContent.replace(/\u200b/g, '').trim() && !contentInput.querySelector('img,table')) {
+    const d = newTodo();
+    contentInput.innerHTML = '';
+    contentInput.appendChild(d);
+    placeCaretEnd(d);
+    notifyContentChanged();
     return;
   }
-  const r = sel.getRangeAt(0);
-  const isBlock = (c) => /^(DIV|P|H[1-6])$/.test(c.tagName) && r.intersectsNode(c);
-  let blocks = Array.from(contentInput.children).filter(isBlock);
-  if (!blocks.length) {
-    document.execCommand('formatBlock', false, 'div');
-    blocks = Array.from(contentInput.children).filter(isBlock);
-    if (!blocks.length) { document.execCommand('insertHTML', false, '<div class="todo" data-done="0"><br></div>'); return; }
+
+  let range = sel.rangeCount ? sel.getRangeAt(0) : null;
+  if (!range || !contentInput.contains(range.commonAncestorContainer)) {
+    range = document.createRange(); range.selectNodeContents(contentInput); range.collapse(false);   // pas de curseur : on ajoute une case à la fin
+    const d = newTodo(); contentInput.appendChild(d); placeCaretEnd(d); notifyContentChanged(); return;
   }
-  const allTodo = blocks.every((b) => b.classList.contains('todo'));
-  blocks.forEach((b) => {
-    if (allTodo) { b.classList.remove('todo'); b.removeAttribute('data-done'); if (!b.getAttribute('class')) b.removeAttribute('class'); }
-    else { b.classList.add('todo'); if (!b.hasAttribute('data-done')) b.setAttribute('data-done', '0'); }
+
+  // Les lignes « nues » (texte sans bloc autour) sont d'abord enveloppées dans un bloc
+  const isBlockEl = (n) => n.nodeType === 1 && /^(DIV|P|H[1-6]|UL|OL|TABLE|BLOCKQUOTE|PRE)$/.test(n.tagName);
+  const startTop = (n) => { while (n && n.parentNode !== contentInput) n = n.parentNode; return n; };
+  let first = startTop(range.startContainer === contentInput ? contentInput.childNodes[range.startOffset] || contentInput.lastChild : range.startContainer);
+  let last = startTop(range.endContainer === contentInput ? contentInput.childNodes[Math.max(0, range.endOffset - 1)] || contentInput.lastChild : range.endContainer);
+  if (!first) first = contentInput.firstChild;
+  if (!last) last = contentInput.lastChild;
+  const kids = Array.from(contentInput.childNodes);
+  let a = kids.indexOf(first), b = kids.indexOf(last);
+  if (a < 0 || b < 0) { a = 0; b = kids.length - 1; }
+  if (a > b) { const t = a; a = b; b = t; }
+  const blocks = [];
+  let run = null;
+  for (let k = a; k <= b; k++) {
+    const n = kids[k];
+    if (isBlockEl(n)) { run = null; blocks.push(n); continue; }
+    if (n.nodeType === 1 && n.tagName === 'BR') { run = null; continue; }
+    if (!run) { run = document.createElement('div'); contentInput.insertBefore(run, n); blocks.push(run); }
+    run.appendChild(n);
+  }
+  if (!blocks.length) return;
+  const allTodo = blocks.every((el) => el.classList && el.classList.contains('todo'));
+  blocks.forEach((el) => {
+    if (allTodo) { el.classList.remove('todo'); el.removeAttribute('data-done'); if (!el.getAttribute('class')) el.removeAttribute('class'); }
+    else { el.classList.add('todo'); if (!el.hasAttribute('data-done')) el.setAttribute('data-done', '0'); if (!el.firstChild) el.appendChild(document.createElement('br')); }
   });
+  placeCaretEnd(blocks[blocks.length - 1]);
   notifyContentChanged();
 });
 
