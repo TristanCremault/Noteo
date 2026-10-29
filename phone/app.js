@@ -2690,6 +2690,12 @@ function fixLowContrastText(root) {
     pushQueue = pushQueue.then(doPushOnlineData).catch(function () { return false; });
     return pushQueue;
   }
+  // Économie de données : on ne télécharge le gros paquet chiffré que si quelque chose a changé
+  // (date de modification distante différente, ou changement local depuis la dernière synchro).
+  function sigHash(str) { var h = 5381, i; for (i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return h + ':' + str.length; }
+  function localSig() { return sigHash(stableState(getNotes(), getFolders(), getTomb(), readProfile())); }
+  function rememberSync(ts) { write('noteo-sync-ts', ts || ''); write('noteo-sync-sig', localSig()); }
+  var syncBackoffUntil = 0;
   async function doPushOnlineData() {
     if (navigator.onLine === false) { markPending(); return false; }
     var password = sget('noteo-online-password'), sessionSalt = sget('noteo-online-salt');
@@ -2697,7 +2703,10 @@ function fixLowContrastText(root) {
     var session = await sbSession();
     if (!session) session = await ensureOnlineSession();
     if (!session) { markPending(); return false; }
+    if (Date.now() < syncBackoffUntil) return false;
     try {
+      var peek = await sbGetRow(session, 'updated_at');   // quelques octets seulement
+      if (!peek.error && peek.row && peek.row.updated_at && peek.row.updated_at === read('noteo-sync-ts') && localSig() === read('noteo-sync-sig')) { clearPending(); return true; }
       for (var attempt = 0; attempt < 3; attempt++) {
         var got = await sbGetRow(session, 'enc_salt,enc_iv,enc_blob,updated_at');
         if (got.error) { markPending(); return false; }
@@ -2719,7 +2728,7 @@ function fixLowContrastText(root) {
         var writeSalt = salt, writeKey = key;
         if (migrate) { writeSalt = olNewSalt(); writeKey = await olKey(password, writeSalt); }
         if (!migrate && remoteStr !== null && remoteStr === stableState(merged.notes, merged.folders, merged.tombstones, merged.profile)) {
-          applyMerged(merged); clearPending(); return true;
+          applyMerged(merged); clearPending(); rememberSync(row && row.updated_at); return true;
         }
         var enc = await olEncrypt(writeKey, { notes: merged.notes, folders: merged.folders, tombstones: merged.tombstones, profile: merged.profile });
         var now = new Date().toISOString();
@@ -2737,10 +2746,12 @@ function fixLowContrastText(root) {
         if (migrate) olStoreSecrets(password, writeSalt);
         applyMerged(merged);
         clearPending();
+        rememberSync(r && r.data && r.data[0] && r.data[0].updated_at);
         return true;
       }
-    } catch (e) { markPending(); return false; }
+    } catch (e) { markPending(); syncBackoffUntil = Date.now() + 120000; return false; }
     markPending();
+    syncBackoffUntil = Date.now() + 120000;
     return false;
   }
 
@@ -2769,7 +2780,7 @@ function fixLowContrastText(root) {
   async function syncOnlineNow(force) {
     if (accountType() !== 'online' || navigator.onLine === false || !sget('noteo-online-password')) return;
     var now = Date.now();
-    if (!force && now - lastSync < 8000) return;
+    if (!force && now - lastSync < 15000) return;
     lastSync = now;
     await pushOnlineData();
   }
@@ -2781,7 +2792,7 @@ function fixLowContrastText(root) {
   }
   window.addEventListener('online', function () { syncOnlineNow(true).catch(function () {}); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) syncOnlineNow(false).catch(function () {}); });
-  setInterval(function () { if (!document.hidden) syncOnlineNow(false).catch(function () {}); }, 20000);
+  setInterval(function () { if (!document.hidden) syncOnlineNow(false).catch(function () {}); }, 30000);
   setTimeout(function () { syncOnlineNow(false).catch(function () {}); }, 3000);
   window.addEventListener('noteo-data-merged', function () { try { render(); } catch (e) { /* ignoré */ } });
   window.addEventListener('noteo-profile-merged', function () {

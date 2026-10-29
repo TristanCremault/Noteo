@@ -604,6 +604,13 @@ function pushOnlineData() {
   return onlinePushQueue;
 }
 
+// Économie de données : on ne télécharge le gros paquet chiffré que si quelque chose a changé
+// (date de modification distante différente, ou changement local depuis la dernière synchro).
+function sigHash(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return h + ':' + str.length; }
+function localSyncSig() { return sigHash(stableStateString(readLocalNotes(), readLocalFolders(), getTombstones(), readLocalProfile())); }
+function rememberSync(ts) { localStorage.setItem('noteo-sync-ts', ts || ''); localStorage.setItem('noteo-sync-sig', localSyncSig()); }
+let syncBackoffUntil = 0;
+
 async function doPushOnlineData() {
   const client = getSupabaseClient();
   if (!client || !navigator.onLine) { markPendingOnlineSync(); return false; }
@@ -616,8 +623,14 @@ async function doPushOnlineData() {
   if (!password || !sessionSalt) { markPendingOnlineSync(); return false; }
 
   const userId = session.user.id;
+  if (Date.now() < syncBackoffUntil) return false;
 
   try {
+    const { data: peek } = await client.from('user_data').select('updated_at').eq('user_id', userId).maybeSingle();   // quelques octets seulement
+    if (peek && peek.updated_at && peek.updated_at === localStorage.getItem('noteo-sync-ts') && localSyncSig() === localStorage.getItem('noteo-sync-sig')) {
+      clearPendingOnlineSync();
+      return true;
+    }
     for (let attempt = 0; attempt < 3; attempt++) {
       const { data: row, error: selError } = await client
         .from('user_data')
@@ -666,6 +679,7 @@ async function doPushOnlineData() {
       if (!migrate && remoteStr !== null && remoteStr === stableStateString(merged.notes, merged.folders, merged.tombstones, merged.profile)) {
         applyMergedStateLocally(merged);
         clearPendingOnlineSync();
+        rememberSync(row && row.updated_at);
         return true;
       }
 
@@ -673,6 +687,7 @@ async function doPushOnlineData() {
       const now = new Date().toISOString();
       let writeError = null;
       let written = false;
+      let writtenTs = '';
 
       if (row) {
         // UPDATE (et non upsert : un upsert sans enc_salt est refusé par la colonne NOT NULL)
@@ -681,8 +696,9 @@ async function doPushOnlineData() {
           .update(migrate ? { enc_salt: writeSalt, enc_iv: iv, enc_blob: blob, updated_at: now } : { enc_iv: iv, enc_blob: blob, updated_at: now })
           .eq('user_id', userId)
           .eq('updated_at', row.updated_at)
-          .select('user_id');
+          .select('user_id, updated_at');
         writeError = res.error;
+        writtenTs = res.data && res.data[0] && res.data[0].updated_at;
         written = !!(res.data && res.data.length);
       } else {
         const res = await client
@@ -703,15 +719,18 @@ async function doPushOnlineData() {
 
       applyMergedStateLocally(merged);
       clearPendingOnlineSync();
+      rememberSync(writtenTs);
       return true;
     }
   } catch (err) {
     console.error("Synchro : erreur :", err);
     markPendingOnlineSync();
+    syncBackoffUntil = Date.now() + 120000;
     return false;
   }
 
   markPendingOnlineSync();
+  syncBackoffUntil = Date.now() + 120000;
   return false;
 }
 
@@ -806,7 +825,7 @@ async function syncOnlineNow(force) {
   if (!sessionStorage.getItem('noteo-online-password')) return;
 
   const now = Date.now();
-  if (!force && now - lastSyncAttempt < 8000) return;
+  if (!force && now - lastSyncAttempt < 15000) return;
   lastSyncAttempt = now;
 
   if (!(await ensureOnlineSession())) return;
@@ -818,7 +837,7 @@ const trySyncWhenBackOnline = () => syncOnlineNow(true);
 
 window.addEventListener('online', () => { syncOnlineNow(true).catch(() => {}); });
 window.addEventListener('focus', () => { syncOnlineNow(false).catch(() => {}); });
-setInterval(() => { syncOnlineNow(false).catch(() => {}); }, 20000);
+setInterval(() => { if (!document.hidden) syncOnlineNow(false).catch(() => {}); }, 30000);
 setTimeout(() => { syncOnlineNow(false).catch(() => {}); }, 3000);
 
 // --- Boîtes de dialogue intégrées (remplacent alert() / confirm()) ---
