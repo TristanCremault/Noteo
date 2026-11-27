@@ -120,6 +120,26 @@
         if (n.indexOf('on') === 0 || ((n === 'href' || n === 'src') && v.indexOf('javascript:') === 0)) el.removeAttribute(a.name);
       });
     });
+    // Anciens formats de cases à cocher (cases <input>, classes done/checked, ☐ ☑ [ ] [x]) -> format actuel
+    root.querySelectorAll('input[type=checkbox]').forEach(function (inp) {
+      var done = inp.hasAttribute('checked') || inp.checked;
+      var blk = inp.closest('div, p, li') || inp.parentNode;
+      inp.remove();
+      if (blk && blk !== root) { blk.classList.add('todo'); blk.setAttribute('data-done', done ? '1' : '0'); }
+    });
+    root.querySelectorAll('.todo').forEach(function (t) {
+      var d = t.getAttribute('data-done');
+      if (d !== '1' && d !== '0') t.setAttribute('data-done', (t.classList.contains('done') || t.classList.contains('checked') || t.getAttribute('data-checked') === 'true' || t.getAttribute('data-checked') === '1') ? '1' : '0');
+      t.classList.remove('done', 'checked');
+    });
+    root.querySelectorAll('div, p').forEach(function (b) {
+      if (b.classList.contains('todo') || b.querySelector('div, p, table')) return;
+      var m = /^\s*(?:(\u2611|\u2705|\[[xX]\])|(\u2610|\[\s?\]))\s?/.exec(b.textContent);
+      if (!m) return;
+      var f = b.firstChild; if (!f || f.nodeType !== 3) return;
+      f.nodeValue = f.nodeValue.replace(/^\s*(?:\u2611|\u2705|\u2610|\[[xX ]?\])\s?/, '');
+      b.classList.add('todo'); b.setAttribute('data-done', m[1] ? '1' : '0');
+    });
     return root.innerHTML;
   }
   function fmtDate(iso) {
@@ -727,10 +747,37 @@
     scrim.appendChild(sheet);
     scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSheet(); });
     build(sheet);
+    var grip = document.createElement('div'); grip.className = 'sheet-grip'; sheet.insertBefore(grip, sheet.firstChild);
+    enableSheetSwipe(sheet);
     document.body.appendChild(scrim);
     if (motionOk()) { scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180 }); sheet.animate([{ transform: 'translateY(40px)', opacity: 0.4 }, { transform: 'none', opacity: 1 }], { duration: 240, easing: EASE }); }
     var f = sheet.querySelector('input');
     if (f && !sheet.hasAttribute('data-nofocus')) f.focus();
+  }
+  // Glisser la feuille vers le bas avec le doigt pour la fermer
+  function enableSheetSwipe(sheet) {
+    var y0 = null, dy = 0, t0 = 0;
+    sheet.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) { y0 = null; return; }
+      y0 = e.touches[0].clientY; dy = 0; t0 = Date.now();
+      sheet.style.transition = 'none';
+    }, { passive: true });
+    sheet.addEventListener('touchmove', function (e) {
+      if (y0 === null) return;
+      var d = e.touches[0].clientY - y0;
+      if (d > 0 && sheet.scrollTop <= 0) { dy = d; sheet.style.transform = 'translateY(' + d + 'px)'; if (scrim) scrim.style.opacity = String(Math.max(0.2, 1 - d / 400)); if (e.cancelable) e.preventDefault(); }
+      else if (dy > 0) { dy = 0; sheet.style.transform = ''; }
+    }, { passive: false });
+    function end() {
+      if (y0 === null) return;
+      var fast = dy / Math.max(1, Date.now() - t0) > 0.6;
+      y0 = null;
+      if (dy > 90 || (dy > 30 && fast)) { sheet.style.transition = 'transform .16s ease-out'; sheet.style.transform = 'translateY(110%)'; setTimeout(closeSheet, 150); }
+      else { sheet.style.transition = 'transform .18s ease-out'; sheet.style.transform = ''; if (scrim) scrim.style.opacity = ''; }
+      dy = 0;
+    }
+    sheet.addEventListener('touchend', end);
+    sheet.addEventListener('touchcancel', end);
   }
   function opt(sheet, label, cls, fn) {
     var b = document.createElement('button');
@@ -1627,7 +1674,50 @@ function fixLowContrastText(root) {
     });
   }
 
-  function tableSheet() {
+  // Cellule du tableau où se trouve le curseur (null si on n'est pas dans un tableau)
+  function currentCell() {
+    var n = savedRange ? savedRange.startContainer : null;
+    if (!n) { var s = window.getSelection(); n = s && s.rangeCount ? s.getRangeAt(0).startContainer : null; }
+    if (n && n.nodeType === 3) n = n.parentNode;
+    var c = n && n.closest ? n.closest('td, th') : null;
+    return c && bodyEl.contains(c) ? c : null;
+  }
+  function newCell(tag) { var c = document.createElement(tag || 'td'); c.setAttribute('style', 'padding:6px;'); c.innerHTML = '&nbsp;'; return c; }
+  function tableEditSheet(cell) {
+    var tr = cell.parentNode, table = cell.closest('table');
+    var idx = Array.prototype.indexOf.call(tr.children, cell);
+    function rows() { return Array.prototype.slice.call(table.rows); }
+    function addRow(after) {
+      var nr = document.createElement('tr');
+      for (var i = 0; i < tr.children.length; i++) nr.appendChild(newCell());
+      tr.parentNode.insertBefore(nr, after ? tr.nextSibling : tr);
+    }
+    function addCol(after) {
+      rows().forEach(function (r) {
+        var ref = r.children[Math.min(idx, r.children.length - 1)];
+        var c = newCell(ref && ref.tagName === 'TH' ? 'th' : 'td');
+        if (!ref) r.appendChild(c); else r.insertBefore(c, after ? ref.nextSibling : ref);
+      });
+    }
+    function done(msg) { closeSheet(); markDirty(); updateFoot(); toast(msg); }
+    openSheet(function (sheet) {
+      heading(sheet, 'Modifier le tableau');
+      opt(sheet, 'Ajouter une ligne au-dessus', '', function () { addRow(false); done('Ligne ajoutée'); });
+      opt(sheet, 'Ajouter une ligne en dessous', '', function () { addRow(true); done('Ligne ajoutée'); });
+      opt(sheet, 'Ajouter une colonne à gauche', '', function () { addCol(false); done('Colonne ajoutée'); });
+      opt(sheet, 'Ajouter une colonne à droite', '', function () { addCol(true); done('Colonne ajoutée'); });
+      opt(sheet, 'Supprimer la ligne', 'danger', function () { if (rows().length <= 1) table.remove(); else tr.remove(); done('Ligne supprimée'); });
+      opt(sheet, 'Supprimer la colonne', 'danger', function () {
+        if (tr.children.length <= 1) table.remove(); else rows().forEach(function (r) { if (r.children[idx]) r.children[idx].remove(); });
+        done('Colonne supprimée');
+      });
+      opt(sheet, 'Supprimer le tableau', 'danger', function () { table.remove(); done('Tableau supprimé'); });
+      opt(sheet, 'Insérer un nouveau tableau…', '', function () { tableSheet(true); });
+    });
+  }
+  function tableSheet(forceNew) {
+    var cell = forceNew === true ? null : currentCell();
+    if (cell) { tableEditSheet(cell); return; }
     openSheet(function (sheet) {
       heading(sheet, 'Insérer un tableau');
       var r = numField('table-rows', 'Lignes', 2);
@@ -1789,26 +1879,52 @@ function fixLowContrastText(root) {
     if (e.target.closest('button')) e.preventDefault();
   });
 
+  // Presse-papiers : plugin natif Android d'abord (fiable dans l'APK), puis API web, puis ancienne méthode
+  function copyText(txt) {
+    var np = nativePlugin();
+    function legacy() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = txt; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+        document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, txt.length);
+        var ok = document.execCommand('copy'); ta.remove(); return Promise.resolve(!!ok);
+      } catch (e) { return Promise.resolve(false); }
+    }
+    function web() {
+      if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(txt).then(function () { return true; }, legacy);
+      return legacy();
+    }
+    if (np && np.clipboardWrite) return np.clipboardWrite({ text: txt }).then(function () { return true; }, web);
+    return web();
+  }
+  function readClipboardText() {
+    var np = nativePlugin();
+    function web() {
+      if (!navigator.clipboard || !navigator.clipboard.readText) { toast('Colle avec un appui long dans la note.'); return Promise.resolve(''); }
+      return navigator.clipboard.readText().catch(function () { toast('Collage refusé : appui long dans la note.'); return ''; });
+    }
+    if (np && np.clipboardRead) return np.clipboardRead().then(function (r) { return (r && r.text) || ''; }, web);
+    return web();
+  }
   var ACTIONS = {
     undo: function () { exec('undo'); },
     redo: function () { exec('redo'); },
     copy: function () {
       var txt = savedRange ? savedRange.toString() : '';
-      if (!txt) { toast('Sélectionne du texte à copier.'); return; }
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(txt).then(function () { toast('Copié'); }, function () { restoreSel(); document.execCommand('copy'); });
-      } else { restoreSel(); document.execCommand('copy'); }
+      var whole = false;
+      if (!txt) { txt = (bodyEl.innerText || '').replace(/\u200b/g, '').trim(); whole = true; }
+      if (!txt) { toast('Rien à copier.'); return; }
+      copyText(txt).then(function (ok) { toast(ok ? (whole ? 'Toute la note copiée' : 'Copié') : 'Copie impossible'); });
     },
     paste: function () {
       if (!ed || !ed.editable) return;
-      if (!navigator.clipboard || !navigator.clipboard.readText) { toast('Colle avec un appui long dans la note.'); return; }
-      navigator.clipboard.readText().then(function (t) {
+      readClipboardText().then(function (t) {
         if (!t) { toast('Rien à coller.'); return; }
         restoreSel();
-        document.execCommand('insertText', false, t);
+        if (!document.execCommand('insertText', false, t)) insertHtml(escHtml(t).replace(/\n/g, '<br>'));
         markDirty();
         updateFoot();
-      }, function () { toast('Collage refusé : fais un appui long dans la note.'); });
+      });
     },
     bold: function () { exec('bold'); },
     italic: function () { exec('italic'); },
@@ -1827,7 +1943,7 @@ function fixLowContrastText(root) {
     right: function () { exec('justifyRight'); },
     table: tableSheet,
     link: linkSheet,
-    image: function () { imgFile.click(); },
+    image: function () { pickImage(readImageFile); },
     find: function () { findBar.hidden = !findBar.hidden; if (!findBar.hidden) findInput.focus(); },
     more: function () { optionsSheet(); }
   };
@@ -2047,7 +2163,7 @@ function fixLowContrastText(root) {
       var r3 = toolRow(sheet);
       toolBtn(r3, 'Tableau', 'Insérer un tableau', can, tableSheet);
       toolBtn(r3, '🔗 Lien', 'Insérer un lien', can, linkSheet);
-      toolBtn(r3, '🖼️ Image', 'Insérer une image', can, function () { imgFile.click(); });
+      toolBtn(r3, '🖼️ Image', 'Insérer une image', can, function () { pickImage(readImageFile); });
       toolBtn(r3, '📄 PDF', 'Importer un PDF', can, function () { closeSheet(); pdfInput.click(); });
 
       sectionLabel(sheet, 'Note');
@@ -2124,8 +2240,7 @@ function fixLowContrastText(root) {
       opt(sheet, 'Copier le texte', '', function () {
         var n = noteText();
         closeSheet();
-        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(n.title + '\n\n' + n.text).then(function () { toast('Texte copié'); }, function () { toast('Copie refusée.'); });
-        else toast('Copie impossible ici.');
+        copyText(n.title + '\n\n' + n.text).then(function (ok) { toast(ok ? 'Texte copié' : 'Copie refusée.'); });
       });
       opt(sheet, 'Télécharger en texte (.txt)', '', function () { var n = noteText(); closeSheet(); downloadFile(safe + '.txt', 'text/plain;charset=utf-8', n.title + '\n\n' + n.text); });
       opt(sheet, 'Enregistrer ou envoyer en PDF', '', function () { var n = noteText(); closeSheet(); downloadFile(safe + '.pdf', 'application/pdf', pdfBytes(n.title, n.text)); });
@@ -2573,6 +2688,7 @@ function fixLowContrastText(root) {
     completeOnlineLogin(cred.email, r);
     render();
     refreshAccount();
+    syncOnlineNow(true).catch(function () {});
   }
 
   // --- Client HTTP Supabase ---
@@ -2654,7 +2770,7 @@ function fixLowContrastText(root) {
       if (!row) {
         var init = await initializeOnlineData(session, password, { notes: [], folders: [{ name: DEFAULT_FOLDER, parent: null }] });
         if (init.error) return { error: 'Impossible d’initialiser tes données : ' + init.error };
-        await saveOfflineCheck(email, password);
+        saveOfflineCheck(email, password);
         return { initialized: true };
       }
       var key = await olKey(password, row.enc_salt);
@@ -2668,7 +2784,7 @@ function fixLowContrastText(root) {
         profile = dec.profile || null;
       }
       olStoreSecrets(password, row.enc_salt);
-      await saveOfflineCheck(email, password);
+      saveOfflineCheck(email, password);   // en arrière-plan : évite un 2e calcul lent (PBKDF2) avant l'ouverture
       return { notes: notes, folders: folders, tombstones: tombstones, profile: profile };
     } catch (e) {
       if (e instanceof TypeError || navigator.onLine === false) return { offline: true };
@@ -2679,7 +2795,8 @@ function fixLowContrastText(root) {
   async function onlineSignOut() {
     try {
       var s = JSON.parse(sget('noteo-sb-session') || 'null');
-      if (s && navigator.onLine !== false) await fetch(SB_URL + '/auth/v1/logout', { method: 'POST', headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + s.access_token } });
+      // Déconnexion instantanée : on prévient le serveur en arrière-plan (sans attendre sa réponse)
+      if (s && navigator.onLine !== false) fetch(SB_URL + '/auth/v1/logout', { method: 'POST', keepalive: true, headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + s.access_token } }).catch(function () {});
     } catch (e) { /* ignoré */ }
     olClearSecrets();
   }
@@ -2690,6 +2807,12 @@ function fixLowContrastText(root) {
     pushQueue = pushQueue.then(doPushOnlineData).catch(function () { return false; });
     return pushQueue;
   }
+  // Économie de données : on ne télécharge le gros paquet chiffré que si quelque chose a changé
+  // (date de modification distante différente, ou changement local depuis la dernière synchro).
+  function sigHash(str) { var h = 5381, i; for (i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return h + ':' + str.length; }
+  function localSig() { return sigHash(stableState(getNotes(), getFolders(), getTomb(), readProfile())); }
+  function rememberSync(ts) { write('noteo-sync-ts', ts || ''); write('noteo-sync-sig', localSig()); }
+  var syncBackoffUntil = 0;
   async function doPushOnlineData() {
     if (navigator.onLine === false) { markPending(); return false; }
     var password = sget('noteo-online-password'), sessionSalt = sget('noteo-online-salt');
@@ -2697,7 +2820,10 @@ function fixLowContrastText(root) {
     var session = await sbSession();
     if (!session) session = await ensureOnlineSession();
     if (!session) { markPending(); return false; }
+    if (Date.now() < syncBackoffUntil) return false;
     try {
+      var peek = await sbGetRow(session, 'updated_at');   // quelques octets seulement
+      if (!peek.error && peek.row && peek.row.updated_at && peek.row.updated_at === read('noteo-sync-ts') && localSig() === read('noteo-sync-sig')) { clearPending(); return true; }
       for (var attempt = 0; attempt < 3; attempt++) {
         var got = await sbGetRow(session, 'enc_salt,enc_iv,enc_blob,updated_at');
         if (got.error) { markPending(); return false; }
@@ -2719,7 +2845,7 @@ function fixLowContrastText(root) {
         var writeSalt = salt, writeKey = key;
         if (migrate) { writeSalt = olNewSalt(); writeKey = await olKey(password, writeSalt); }
         if (!migrate && remoteStr !== null && remoteStr === stableState(merged.notes, merged.folders, merged.tombstones, merged.profile)) {
-          applyMerged(merged); clearPending(); return true;
+          applyMerged(merged); clearPending(); rememberSync(row && row.updated_at); return true;
         }
         var enc = await olEncrypt(writeKey, { notes: merged.notes, folders: merged.folders, tombstones: merged.tombstones, profile: merged.profile });
         var now = new Date().toISOString();
@@ -2737,10 +2863,12 @@ function fixLowContrastText(root) {
         if (migrate) olStoreSecrets(password, writeSalt);
         applyMerged(merged);
         clearPending();
+        rememberSync(r && r.data && r.data[0] && r.data[0].updated_at);
         return true;
       }
-    } catch (e) { markPending(); return false; }
+    } catch (e) { markPending(); syncBackoffUntil = Date.now() + 30000; return false; }
     markPending();
+    syncBackoffUntil = Date.now() + 30000;
     return false;
   }
 
@@ -2770,6 +2898,7 @@ function fixLowContrastText(root) {
     if (accountType() !== 'online' || navigator.onLine === false || !sget('noteo-online-password')) return;
     var now = Date.now();
     if (!force && now - lastSync < 8000) return;
+    if (force) syncBackoffUntil = 0;   // une demande explicite ignore la pause après un échec
     lastSync = now;
     await pushOnlineData();
   }
@@ -2780,9 +2909,26 @@ function fixLowContrastText(root) {
     changeTimer = setTimeout(function () { syncOnlineNow(true).catch(function () {}); }, 2000);
   }
   window.addEventListener('online', function () { syncOnlineNow(true).catch(function () {}); });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) syncOnlineNow(false).catch(function () {}); });
-  setInterval(function () { if (!document.hidden) syncOnlineNow(false).catch(function () {}); }, 20000);
-  setTimeout(function () { syncOnlineNow(false).catch(function () {}); }, 3000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) syncOnlineNow(true).catch(function () {}); });
+  setInterval(function () { if (!document.hidden) syncOnlineNow(false).catch(function () {}); }, 12000);   // la vérification ne télécharge que quelques octets
+  window.addEventListener('focus', function () { syncOnlineNow(true).catch(function () {}); });
+  window.addEventListener('pageshow', function () { syncOnlineNow(true).catch(function () {}); });
+  try { var CapApp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App; if (CapApp && CapApp.addListener) CapApp.addListener('resume', function () { syncOnlineNow(true).catch(function () {}); }); } catch (e) { /* ignoré */ }
+  setTimeout(function () { syncOnlineNow(true).catch(function () {}); }, 600);
+
+  // Tirer la liste vers le bas pour actualiser (comme sur les autres applis)
+  (function () {
+    var y0 = null, pulled = false;
+    listEl.addEventListener('touchstart', function (e) { y0 = (listEl.scrollTop <= 0 && e.touches.length === 1) ? e.touches[0].clientY : null; pulled = false; }, { passive: true });
+    listEl.addEventListener('touchmove', function (e) { if (y0 !== null && e.touches[0].clientY - y0 > 90) pulled = true; }, { passive: true });
+    listEl.addEventListener('touchend', function () {
+      if (!pulled) { y0 = null; return; }
+      y0 = null; pulled = false;
+      if (accountType() !== 'online') { render(); return; }
+      toast('Actualisation…');
+      syncOnlineNow(true).then(function () { render(); }, function () { toast('Synchronisation impossible.'); });
+    }, { passive: true });
+  })();
   window.addEventListener('noteo-data-merged', function () { try { render(); } catch (e) { /* ignoré */ } });
   window.addEventListener('noteo-profile-merged', function () {
     try { $('acc-display').value = read('noteo-display-name') || ''; refreshAccount(); } catch (e) { /* ignoré */ }
@@ -2816,7 +2962,30 @@ function fixLowContrastText(root) {
     cv.getContext('2d').drawImage(im, 0, 0, w, h);
     return cv.toDataURL('image/jpeg', quality || 0.8);
   }
-  function pickImage(onFile) {
+  // ----- Plugin natif Android (empreinte digitale, sélecteur d'images) : absent dans un navigateur -----
+  function nativePlugin() {
+    try {
+      var C = window.Capacitor;
+      if (!C || (C.getPlatform && C.getPlatform() === 'web')) return null;
+      return (C.Plugins && C.Plugins.NoteoNative) || (C.registerPlugin && C.registerPlugin('NoteoNative')) || null;
+    } catch (e) { return null; }
+  }
+  var bioAvail = null;
+  async function bioAvailable() {
+    if (bioAvail !== null) return bioAvail;
+    var P = nativePlugin();
+    if (!P || !P.biometricAvailable) return (bioAvail = false);
+    try { var r = await P.biometricAvailable(); bioAvail = !!(r && r.available); } catch (e) { bioAvail = false; }
+    return bioAvail;
+  }
+  function bioAuth(subtitle) {
+    var P = nativePlugin();
+    if (!P || !P.authenticate) return Promise.resolve(false);
+    return P.authenticate({ title: 'Noteo', subtitle: subtitle || 'Déverrouille Noteo' }).then(function () { return true; }, function () { return false; });
+  }
+  function bioEnabled() { return read('noteo-bio-lock') === 'on'; }
+
+  function pickImageInput(onFile) {
     var inp = document.createElement('input');
     inp.type = 'file';
     inp.accept = 'image/*';
@@ -2824,6 +2993,21 @@ function fixLowContrastText(root) {
     inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; inp.remove(); if (f) onFile(f); });
     document.body.appendChild(inp);
     inp.click();
+  }
+  function pickImage(onFile) {
+    var P = nativePlugin();
+    if (P && P.pickImage) {
+      P.pickImage().then(function (r) {
+        if (!r || !r.data) return;
+        return fetch(r.data).then(function (res) { return res.blob(); }).then(function (b) { onFile(new File([b], 'photo.jpg', { type: b.type || 'image/jpeg' })); });
+      }).catch(function (e) {
+        var msg = String((e && (e.message || e.errorMessage)) || e || '');
+        if (/cancel/i.test(msg)) return;
+        pickImageInput(onFile);   // plan B : sélecteur du navigateur intégré
+      });
+      return;
+    }
+    pickImageInput(onFile);
   }
 
   // Écran de recadrage : cadre déplaçable avec 4 poignées d'angle (carré ou libre)
@@ -2848,7 +3032,7 @@ function fixLowContrastText(root) {
       img.src = src; img.draggable = false;
       box.appendChild(img);
       var frame = document.createElement('div');
-      frame.className = 'crop-frame';
+      frame.className = 'crop-frame' + (opts.square ? ' round' : '');
       var f = { x: 0, y: 0, w: 0, h: 0 };
       if (opts.square) { f.w = f.h = Math.round(Math.min(dw, dh) * 0.85); } else { f.w = Math.round(dw * 0.9); f.h = Math.round(dh * 0.9); }
       f.x = Math.round((dw - f.w) / 2); f.y = Math.round((dh - f.h) / 2);
@@ -2916,7 +3100,7 @@ function fixLowContrastText(root) {
   var logoImgEl = $('btn-logo').querySelector('img');
   var logoDarkSrc = logoImgEl ? logoImgEl.getAttribute('src') : '';
   var logoLightSrc = (logoImgEl && logoImgEl.getAttribute('data-light-src')) || logoDarkSrc;
-  function defaultLogo() { return effectiveTheme() === 'light' ? logoLightSrc : logoDarkSrc; }
+  function defaultLogo() { return logoDarkSrc; }
   function refreshPhoto() {
     var photo = read('noteo-profile-photo');
     var av = $('acc-avatar');
@@ -2930,7 +3114,7 @@ function fixLowContrastText(root) {
       av.classList.remove('has-photo');
       av.innerHTML = '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c.8-3.6 3.8-5.5 7.5-5.5s6.7 1.9 7.5 5.5"/></svg>';
     }
-    if (logoImgEl) logoImgEl.src = photo || defaultLogo();
+    if (logoImgEl) { logoImgEl.src = photo || defaultLogo(); $('btn-logo').classList.toggle('has-photo', !!photo); }
     $('acc-photo-label').textContent = photo ? 'Changer votre photo de profil' : 'Importer votre photo de profil';
   }
   function importPhoto() {
@@ -3668,6 +3852,8 @@ function fixLowContrastText(root) {
     $('acc-btn-pass').hidden = type !== 'local';
     $('acc-logout').hidden = !(type === 'local' || type === 'online');
     $('acc-pin-on').checked = pinEnabled() && !!read('noteo-app-pin-hash');
+    $('acc-bio').checked = bioEnabled();
+    bioAvailable().then(function (ok) { $('acc-bio-row').hidden = !ok; });
     if ($('acc-username') && type === 'online' && !read('noteo-username') && onlineAccount()) write('noteo-username', onlineAccount().email);
     if ($('acc-username')) $('acc-username').value = read('noteo-username') || '';
     if ($('acc-anim')) $('acc-anim').checked = read('noteo-animations') !== 'off';
@@ -3986,6 +4172,17 @@ function fixLowContrastText(root) {
     if (read('noteo-app-pin-hash')) authSheet(storedPin(), 'Confirme ton code PIN actuel pour le modifier', function () { pinSetupSheet(); return true; }, 'app-pin', pinLabels);
     else pinSetupSheet();
   });
+  $('acc-bio').addEventListener('click', function (e) {
+    e.preventDefault();
+    if (bioEnabled()) { write('noteo-bio-lock', 'off'); toast('Verrouillage par empreinte désactivé'); setTimeout(refreshAccount, 0); return; }
+    bioAuth('Confirme ton empreinte pour activer le verrouillage').then(function (ok) {
+      if (!ok) { toast('Empreinte non reconnue.'); return; }
+      write('noteo-bio-lock', 'on');
+      sset('noteo-bio-unlocked', 'true');
+      toast('Verrouillage par empreinte activé');
+      refreshAccount();
+    });
+  });
   $('acc-pin-on').addEventListener('click', function (e) {
     e.preventDefault();   // on décide nous-mêmes de l'état de la case (rafraîchie après coup, sinon le navigateur la remet comme avant)
     var later = function () { setTimeout(refreshAccount, 0); };
@@ -4082,6 +4279,7 @@ function fixLowContrastText(root) {
     loginGate.hidden = true;
     appEl.hidden = true;
     pinGate.hidden = false;
+    $('pin-input').hidden = false; $('pin-btn').hidden = false; $('bio-btn').hidden = true;
     $('pin-input').value = '';
     $('pin-err').textContent = '';
     $('pin-logout').hidden = !(accountType() === 'local' || accountType() === 'online');
@@ -4089,7 +4287,51 @@ function fixLowContrastText(root) {
     $('pin-tag').textContent = pinGateMode === 'vault' ? 'Entre ton code PIN : tu seras reconnecté à ton compte en ligne.' : 'Entre ton code PIN pour continuer.';
     $('pin-input').focus();
   }
+  // Verrouillage par empreinte : remplace le code PIN quand il est activé (et disponible sur l'appareil)
+  function showBioGate() {
+    pinGateMode = 'bio';
+    loginGate.hidden = true;
+    appEl.hidden = true;
+    pinGate.hidden = false;
+    $('pin-input').hidden = true;
+    $('pin-btn').hidden = true;
+    $('pin-use-pass').hidden = true;
+    $('bio-btn').hidden = false;
+    $('pin-logout').hidden = !(accountType() === 'local' || accountType() === 'online');
+    $('pin-err').textContent = '';
+    $('pin-tag').textContent = 'Pose ton doigt sur le lecteur d’empreinte pour continuer.';
+    runBioUnlock();
+  }
+  var bioBusy = false;
+  async function runBioUnlock() {
+    if (bioBusy) return;
+    bioBusy = true;
+    var ok = await bioAuth('Déverrouille Noteo');
+    bioBusy = false;
+    if (!ok) { $('pin-err').textContent = 'Empreinte non reconnue. Touche l’icône pour réessayer.'; return; }
+    sset('noteo-bio-unlocked', 'true');
+    sset('noteo-pin-unlocked', 'true');
+    $('pin-input').hidden = false; $('pin-btn').hidden = false; $('bio-btn').hidden = true;
+    pinGateMode = 'normal';
+    showApp(); render(); refreshAccount();
+  }
+  $('bio-btn').addEventListener('click', runBioUnlock);
+  var hiddenAt = 0;
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (bioEnabled() && bioAvail && hiddenAt && Date.now() - hiddenAt > 60000 && sget('noteo-bio-unlocked') === 'true' && pinGate.hidden && loginGate.hidden) {
+      sdel('noteo-bio-unlocked');
+      showBioGate();   // l'appli était en arrière-plan depuis plus d'une minute : on reverrouille
+    }
+  });
   function maybePinGate() {
+    if (bioEnabled() && sget('noteo-bio-unlocked') !== 'true') {
+      bioAvailable().then(function (ok) { if (ok) showBioGate(); else maybePinGatePlain(); });
+      return;
+    }
+    maybePinGatePlain();
+  }
+  function maybePinGatePlain() {
     if (pinEnabled() && read('noteo-app-pin-hash') && sget('noteo-pin-unlocked') !== 'true') {
       showPinGate('normal');
     } else {
@@ -4252,6 +4494,19 @@ function fixLowContrastText(root) {
   // ---------- Branchements de l'accueil ----------
   searchEl.addEventListener('input', function () { state.query = searchEl.value; render(); maybeCheckLockedCode(searchEl.value); });
 
+  // Onglets de l'espace compte
+  (function () {
+    var tabs = $('acc-tabs');
+    function show(name) {
+      Array.prototype.forEach.call(document.querySelectorAll('.acc-tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === name); });
+      Array.prototype.forEach.call(document.querySelectorAll('.acc-pane'), function (p) { p.hidden = p.getAttribute('data-pane') !== name; });
+      var sc = document.querySelector('.account-scroll'); if (sc) sc.scrollTop = 0;
+      write('noteo-acc-tab', name);
+    }
+    tabs.addEventListener('click', function (e) { var b = e.target.closest('.acc-tab'); if (b) show(b.getAttribute('data-tab')); });
+    window.__accTab = show;
+    show('profil');
+  })();
   $('btn-logo').addEventListener('click', openAccount);
   $('btn-new').addEventListener('click', newNote);
 

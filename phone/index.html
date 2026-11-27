@@ -123,6 +123,14 @@
       </div>
 
       <div class="account-scroll">
+        <nav class="acc-tabs" role="tablist" id="acc-tabs">
+          <button class="acc-tab on" data-tab="profil" role="tab">Nom et photo</button>
+          <button class="acc-tab" data-tab="langue" role="tab">Langue et thème</button>
+          <button class="acc-tab" data-tab="secu" role="tab">Sécurité</button>
+          <button class="acc-tab" data-tab="compte" role="tab">Compte</button>
+          <button class="acc-tab" data-tab="donnees" role="tab">Import / export</button>
+        </nav>
+        <div class="acc-pane" data-pane="profil">
         <section class="acc-hero">
           <div class="acc-avatar" id="acc-avatar"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c.8-3.6 3.8-5.5 7.5-5.5s6.7 1.9 7.5 5.5"/></svg></div>
           <p class="acc-welcome">Bienvenue dans votre espace personnel</p>
@@ -135,7 +143,8 @@
           <label class="acc-label" for="acc-display">Nom d’affichage</label>
           <input id="acc-display" class="acc-field" type="text" placeholder="Nom d’affichage" autocomplete="off">
         </section>
-
+        </div>
+        <div class="acc-pane" data-pane="langue" hidden>
         <section class="acc-card">
           <label class="acc-label" for="acc-lang">Langue</label>
           <select id="acc-lang" class="acc-field">
@@ -147,24 +156,27 @@
             <option value="dark">Thème sombre</option><option value="light">Thème clair</option>
           </select>
         </section>
-
+        <section class="acc-card">
+          <label class="check"><input type="checkbox" id="acc-anim"><span>Animations de transition (ouverture des notes, pages)</span></label>
+        </section>
         <section class="acc-stack">
           <button class="acc-btn" id="acc-btn-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-1-.8-1.4-.8-2.3 0-.9.7-1.5 1.7-1.5H17a4 4 0 0 0 4-4C21 7 17 3 12 3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7.5" r="1"/><circle cx="14.5" cy="7.5" r="1"/></svg><span>Fond de l’application</span></button>
-          <button class="acc-btn" id="acc-btn-export"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg><span>Exporter toutes mes notes<small>fichier ZIP, dossiers et sous-dossiers conservés</small></span></button>
-          <button class="acc-btn" id="acc-btn-import"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4 4 4M5 19h14"/></svg><span>Importer des notes<small>ZIP avec dossiers, fichiers texte (.txt, .md, .html) ou images</small></span></button>
-          <input type="file" id="acc-import-file" accept=".zip,.txt,.md,.markdown,.html,.htm,.png,.jpg,.jpeg,.webp,.gif,image/*,application/zip,text/plain" multiple hidden>
-          <button class="acc-btn" id="acc-btn-lockpass"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="m11 11 8-8M16 6l3 3M14 8l2 2"/></svg><span>Changer le mot de passe du dossier verrouillé<small>par défaut : 000000</small></span></button>
-          <button class="acc-btn" id="acc-btn-pass" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="m11 11 8-8M16 6l3 3M14 8l2 2"/></svg><span>Changer le mot de passe du compte</span></button>
         </section>
-
+        </div>
+        <div class="acc-pane" data-pane="secu" hidden>
         <section class="acc-card">
           <p class="acc-label">Sécurité de l’application</p>
-          <label class="check"><input type="checkbox" id="acc-anim"><span>Animations de transition (ouverture des notes, pages)</span></label>
           <label class="check"><input type="checkbox" id="acc-stay"><span>Rester connecté sur cet appareil (plus besoin du mot de passe à chaque ouverture)</span></label>
+          <label class="check" id="acc-bio-row" hidden><input type="checkbox" id="acc-bio"><span>Verrouiller Noteo avec l’empreinte digitale</span></label>
           <label class="check"><input type="checkbox" id="acc-pin-on"><span>Demander un code PIN à l’ouverture de Noteo</span></label>
           <button class="acc-btn" id="acc-btn-pin"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="m11 11 8-8M16 6l3 3M14 8l2 2"/></svg><span id="acc-pin-label">Définir le code PIN</span></button>
         </section>
-
+        <section class="acc-stack">
+          <button class="acc-btn" id="acc-btn-lockpass"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="m11 11 8-8M16 6l3 3M14 8l2 2"/></svg><span>Changer le mot de passe du dossier verrouillé<small>par défaut : 000000</small></span></button>
+          <button class="acc-btn" id="acc-btn-pass" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4"/><path d="m11 11 8-8M16 6l3 3M14 8l2 2"/></svg><span>Changer le mot de passe du compte</span></button>
+        </section>
+        </div>
+        <div class="acc-pane" data-pane="compte" hidden>
         <h3 class="acc-section">Choisissez votre système de compte</h3>
         <section class="acc-types">
           <button class="acc-type" data-type="none">
@@ -187,6 +199,14 @@
           <button class="acc-btn danger" id="acc-del"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg><span>Supprimer le compte</span></button>
           <button class="acc-btn danger" id="acc-reset"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 3-6.2M4 4v5h5"/></svg><span>Réinitialiser le compte</span></button>
         </section>
+        </div>
+        <div class="acc-pane" data-pane="donnees" hidden>
+        <section class="acc-stack">
+          <button class="acc-btn" id="acc-btn-export"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg><span>Exporter toutes mes notes<small>fichier ZIP, dossiers et sous-dossiers conservés</small></span></button>
+          <button class="acc-btn" id="acc-btn-import"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4 4 4M5 19h14"/></svg><span>Importer des notes<small>ZIP avec dossiers, fichiers texte (.txt, .md, .html) ou images</small></span></button>
+          <input type="file" id="acc-import-file" accept=".zip,.txt,.md,.markdown,.html,.htm,.png,.jpg,.jpeg,.webp,.gif,image/*,application/zip,text/plain" multiple hidden>
+        </section>
+        </div>
       </div>
     </div>
   </div>
@@ -211,6 +231,7 @@
     <div class="gate-card">
       <h1 class="gate-title">Noteo verrouillé</h1>
       <p id="pin-tag" class="gate-tag">Entre ton code PIN pour continuer.</p>
+      <button id="bio-btn" class="gate-bio" type="button" aria-label="Déverrouiller avec l’empreinte digitale" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 11v3.5a6.5 6.5 0 0 1-1.4 4"/><path d="M8.5 11a3.5 3.5 0 0 1 7 0v2.5c0 2.2-.6 4.2-1.6 5.8"/><path d="M5.5 11a6.5 6.5 0 0 1 13 0v1.5"/><path d="M5.5 14.5c0 1.8-.3 3.4-.9 4.8"/><path d="M8.5 14.5c0 2-.4 3.8-1.2 5.3"/><path d="M12 7a4 4 0 0 0-4 4"/></svg></button>
       <input id="pin-input" class="acc-field" type="password" placeholder="Code PIN" autocomplete="off">
       <p id="pin-err" class="hint err" role="alert"></p>
       <button id="pin-btn" class="chip primary gate-btn">Déverrouiller</button>

@@ -2097,3 +2097,72 @@ document.addEventListener('keydown', (e) => {
     toggleFullscreen();
   }
 });
+
+// ----- Modifier un tableau existant : mini-barre qui apparaît quand le curseur est dans une cellule -----
+(function () {
+  const bar = document.createElement('div');
+  bar.id = 'table-bar';
+  bar.className = 'table-bar hidden';
+  bar.innerHTML =
+    '<button data-t="row-up" title="Ajouter une ligne au-dessus">↑ Ligne</button>' +
+    '<button data-t="row-down" title="Ajouter une ligne en dessous">↓ Ligne</button>' +
+    '<button data-t="col-left" title="Ajouter une colonne à gauche">← Colonne</button>' +
+    '<button data-t="col-right" title="Ajouter une colonne à droite">→ Colonne</button>' +
+    '<span class="tb-sep"></span>' +
+    '<button data-t="del-row" class="danger" title="Supprimer la ligne">− Ligne</button>' +
+    '<button data-t="del-col" class="danger" title="Supprimer la colonne">− Colonne</button>' +
+    '<button data-t="del-table" class="danger" title="Supprimer le tableau">Supprimer</button>';
+  document.body.appendChild(bar);
+
+  let cell = null;
+  const newCell = (tag) => { const c = document.createElement(tag || 'td'); c.setAttribute('style', 'padding:6px;'); c.innerHTML = '&nbsp;'; return c; };
+  const findCell = () => {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return null;
+    let n = sel.getRangeAt(0).startContainer;
+    if (n.nodeType === 3) n = n.parentNode;
+    const c = n && n.closest ? n.closest('td, th') : null;
+    return c && contentInput.contains(c) && contentInput.isContentEditable ? c : null;
+  };
+  const place = () => {
+    cell = findCell();
+    if (!cell) { bar.classList.add('hidden'); return; }
+    const r = cell.closest('table').getBoundingClientRect();
+    bar.classList.remove('hidden');
+    const bw = bar.offsetWidth;
+    bar.style.left = Math.max(8, Math.min(window.innerWidth - bw - 8, r.left)) + 'px';
+    bar.style.top = Math.max(8, r.top - bar.offsetHeight - 6) + 'px';
+  };
+  document.addEventListener('selectionchange', place);
+  window.addEventListener('scroll', place, true);
+  window.addEventListener('resize', place);
+  bar.addEventListener('mousedown', (e) => e.preventDefault());   // garde le curseur dans la cellule
+  bar.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-t]');
+    if (!b || !cell) return;
+    const tr = cell.parentNode, table = cell.closest('table');
+    const idx = Array.prototype.indexOf.call(tr.children, cell);
+    const rows = Array.prototype.slice.call(table.rows);
+    const addRow = (after) => {
+      const nr = document.createElement('tr');
+      for (let i = 0; i < tr.children.length; i++) nr.appendChild(newCell());
+      tr.parentNode.insertBefore(nr, after ? tr.nextSibling : tr);
+    };
+    const addCol = (after) => rows.forEach((r) => {
+      const ref = r.children[Math.min(idx, r.children.length - 1)];
+      const c = newCell(ref && ref.tagName === 'TH' ? 'th' : 'td');
+      if (!ref) r.appendChild(c); else r.insertBefore(c, after ? ref.nextSibling : ref);
+    });
+    switch (b.dataset.t) {
+      case 'row-up': addRow(false); break;
+      case 'row-down': addRow(true); break;
+      case 'col-left': addCol(false); break;
+      case 'col-right': addCol(true); break;
+      case 'del-row': if (rows.length <= 1) table.remove(); else tr.remove(); break;
+      case 'del-col': if (tr.children.length <= 1) table.remove(); else rows.forEach((r) => { if (r.children[idx]) r.children[idx].remove(); }); break;
+      case 'del-table': table.remove(); break;
+    }
+    notifyContentChanged();
+    place();
+  });
+})();

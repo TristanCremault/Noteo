@@ -1045,3 +1045,18 @@ body .note-card-header + p {
   width: auto;
   white-space: nowrap;
 }
+
+
+/* Listes à cocher */
+.todo { position: relative; padding-left: 32px; min-height: 1.4em; }
+.todo::before { content: ""; position: absolute; left: 4px; top: 0.2em; width: 18px; height: 18px; box-sizing: border-box; border: 2px solid #4b5efc; border-radius: 5px; background: transparent; cursor: pointer; }
+.todo[data-done="1"]::before { background: #4b5efc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 13px no-repeat; }
+.todo[data-done="1"] { text-decoration: line-through; opacity: 0.6; }
+
+/* Mini-barre de modification d'un tableau */
+.table-bar { position: fixed; z-index: 900; display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 12px; background: var(--bg-sidebar, #16161c); border: 1px solid var(--border-soft, #33343f); box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+.table-bar.hidden { display: none; }
+.table-bar button { height: 28px; padding: 0 9px; border-radius: 8px; border: 0; background: transparent; color: inherit; font: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.table-bar button:hover { background: rgba(120, 130, 255, .18); }
+.table-bar button.danger { color: #ef6a6a; }
+.table-bar .tb-sep { width: 1px; height: 18px; background: var(--border-soft, #33343f); margin: 0 2px; }
